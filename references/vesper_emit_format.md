@@ -18,13 +18,13 @@ Format: InsightProposal schema (spec-ocas-shared-schemas.md).
 ```json
 {
   "proposal_id": "prop_{hash}",
-  "proposal_type": "opportunity_discovery",
+  "proposal_type": "routine_prediction",
   "description": "[SANDS BRIEF: EVENING | MORNING] {YYYY-MM-DD}",
   "confidence_score": 1.0,
   "supporting_entities": [],
   "supporting_relationships": [],
   "predicted_outcome": null,
-  "suggested_follow_up": "{schedule payload JSON-encoded as string}",
+  "suggested_follow_up": "{schedule payload — JSON-encoded string; see suggested_follow_up Payload below}",
   "target_skill": null,
   "created_at": "{ISO 8601}"
 }
@@ -33,6 +33,12 @@ Format: InsightProposal schema (spec-ocas-shared-schemas.md).
 ---
 
 ## `suggested_follow_up` Payload
+
+The `suggested_follow_up` field carries the full schedule payload as a JSON-encoded string.
+Vesper must JSON-parse this field to obtain the structured schedule data.
+The InsightProposal schema defines this field as `string|null`; encoding the payload as a
+string satisfies the type contract while allowing Vesper to carry structured schedule data
+through the standard intake path.
 
 ```json
 {

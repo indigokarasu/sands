@@ -3,7 +3,5 @@
   "version": "1.0.0",
   "description": "Calendar management skill. Use when the user wants to view, query, create, modify, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, automatic travel time event insertion between consecutive appointments using Google Places API, and daily schedule briefings for Vesper. Trigger on: 'what's on my calendar', 'schedule a meeting', 'am I free', 'add travel time', 'any conflicts this week', 'what do I need to prepare for tomorrow'. Do not trigger for general time or timezone questions, reminders without calendar context, or task management.",
   "author": "Indigo Karasu",
-  "email": "mx.indigo.karasu@gmail.com",
-  "skill_type": "system",
-  "visibility": "public"
+  "email": "mx.indigo.karasu@gmail.com"
 }

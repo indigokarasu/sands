@@ -2,7 +2,12 @@
 
 Version: 1.0.0
 Author: Indigo Karasu
-Visibility: public
+
+---
+
+## Visibility
+
+public
 
 ---
 
@@ -33,6 +38,24 @@ travel reservations (Voyage), general research (Sift), location or entity knowle
 
 **Adjacent skills:** Vesper consumes Sands schedule signals for briefings. Sands does not
 depend on Vesper to function.
+
+---
+
+## Ontology Mapping
+
+Sands extracts and manages two entity types from `spec-ocas-ontology.md`:
+
+**Place** — event locations resolved via Google Places API during `sands.travel`. Each
+location is resolved to a place ID and coordinates. Sands does not emit Place signals to
+Elephas; location data is retained in `decisions.jsonl` as decision context only.
+
+**Event** (Concept subclass) — calendar events created or modified via `sands.create` and
+`sands.modify`. Sands does not emit Event signals to Elephas; calendar events are managed
+through Google Calendar, not Chronicle.
+
+Sands queries entity context from:
+- **Weave** (read-only) — attendee identity resolution during conflict classification
+- **Elephas / Chronicle** — current location context for travel departure resolution
 
 ---
 
@@ -223,9 +246,14 @@ Journal path: `~/openclaw/journals/ocas-sands/YYYY-MM-DD/{run_id}.json`
 ~/openclaw/data/ocas-sands/
   config.json
   decisions.jsonl
+  events.jsonl
 ~/openclaw/journals/ocas-sands/
   YYYY-MM-DD/{run_id}.json
 ```
+
+`events.jsonl` — append-only log of calendar events created, modified, or read by Sands.
+One record per event interaction: `event_id`, `calendar_id`, `title`, `start`, `end`,
+`action` (`created|modified|queried`), `run_id`, `timestamp`.
 
 `config.json` minimum fields:
 
@@ -243,7 +271,11 @@ Journal path: `~/openclaw/journals/ocas-sands/YYYY-MM-DD/{run_id}.json`
   "work_calendar_id": "work@company.com",
   "google_places_api_key": "",
   "travel_buffer_minutes": 10,
-  "conflict_lookahead_days": 7
+  "conflict_lookahead_days": 7,
+  "retention": {
+    "days": 90,
+    "max_records": 10000
+  }
 }
 ```
 
@@ -269,6 +301,32 @@ Before inserting travel:
   creating a truncated or overlapping travel block.
 
 On journal write:
-- Every run produces a journal file
-- Journal must include: run_id, command, calendars queried, events affected (by title),
-  decision summary, Google Places API calls made (if any)
+- Every run produces a journal file per `spec-ocas-journal.md`
+- Required `run_identity` fields: `comparison_group_id`, `run_id`, `role`, `skill_name`,
+  `skill_version`, `timestamp_start`, `timestamp_end`, `normalized_input_hash`,
+  `journal_spec_version`, `journal_type`
+- Required `metrics` fields: `success_rate`, `retry_rate`, `latency_ms`
+- Required `okr_evaluation` block — see Skill OKRs below
+- `decision` block must include: calendars queried, events affected (by title),
+  Google Places API calls made (if any)
+
+---
+
+## Skill OKRs
+
+Skill-specific OKRs evaluated in the `okr_evaluation` journal block.
+
+```yaml
+skill_okrs:
+  - name: conflict_detection_accuracy
+    target: ">= 0.95"
+    description: "Fraction of actual conflicts correctly identified and surfaced"
+  - name: travel_time_api_success_rate
+    target: ">= 0.90"
+    description: "Fraction of sands.travel runs that complete via Google Places API (not manual fallback)"
+  - name: calendar_write_success_rate
+    target: ">= 0.98"
+    description: "Fraction of sands.create and sands.modify runs with no calendar API error"
+```
+
+Universal OKRs (`success_rate` ≥ 0.95, `retry_rate` ≤ 0.10) also apply per `spec-ocas-journal.md` §13.
