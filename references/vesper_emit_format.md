@@ -18,7 +18,7 @@ Format: InsightProposal schema (spec-ocas-shared-schemas.md).
 ```json
 {
   "proposal_id": "prop_{hash}",
-  "proposal_type": "routine_prediction",
+  "proposal_type": "{see Proposal Type Rules below}",
   "description": "[SANDS BRIEF: EVENING | MORNING] {YYYY-MM-DD}",
   "confidence_score": 1.0,
   "supporting_entities": [],
@@ -29,6 +29,17 @@ Format: InsightProposal schema (spec-ocas-shared-schemas.md).
   "created_at": "{ISO 8601}"
 }
 ```
+
+### Proposal Type Rules
+
+| Brief type | `proposal_type` |
+|---|---|
+| Evening (next day) | `routine_prediction` |
+| Morning (today) | `preparation_checklist` |
+
+If `preparation_checklist` is not yet in the InsightProposal schema enum, use
+`actionable_insight` as a fallback, or request the type be added to
+`spec-ocas-shared-schemas.md`.
 
 ---
 
@@ -45,6 +56,13 @@ through the standard intake path.
   "brief_type": "evening | morning",
   "target_date": "YYYY-MM-DD",
   "summary_note": "2-3 sentence narrative characterizing the day.",
+  "day_overview": {
+    "total_events": 5,
+    "first_event": "HH:MM",
+    "last_event": "HH:MM",
+    "free_hours": 3.5,
+    "prep_items_count": 2
+  },
   "events": [
     {
       "title": "string",
@@ -52,6 +70,7 @@ through the standard intake path.
       "end": "HH:MM",
       "location": "string | null",
       "calendar": "personal | family",
+      "all_day": false,
       "conflict": false,
       "conflict_note": "string | null",
       "prep_required": false,
@@ -74,13 +93,17 @@ through the standard intake path.
 
 - Include all events for the next day
 - `summary_note`: 2-3 sentences characterizing the day, flag anything unusual
+- `day_overview`: populate all fields based on the full event list
 - Set `conflict: true` and populate `conflict_note` for any conflicts found
 - Set `prep_required: true` for events matching preparation signals
 - Include `work_busy_blocks` as unavailability overlay (no titles)
 
 ## Morning Brief Rules
 
-- Include only events where `prep_required: true`
+- Include ALL events in the `events` array (not just prep items)
+- Highlight prep items with `prep_required: true`; Vesper renders these distinctly
 - `prep_note` should be action-oriented: "Review the agenda", "Confirm reservation"
-- `summary_note` should be brief: "You have 2 items that need attention today."
-- Skip events with no prep signals entirely
+- `day_overview`: populate all fields for a quick at-a-glance summary
+- `summary_note` should combine overview with prep focus: "You have 5 events today from
+  9:00 to 5:00, with about 3.5 free hours. 2 items need preparation."
+- Include `work_busy_blocks` as unavailability overlay
