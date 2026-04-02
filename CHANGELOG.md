@@ -1,3 +1,8 @@
+## [1.1.1] - 2026-04-02
+
+### Changed
+- Fixed missing skill_type and filesystem fields in skill.json; added YAML frontmatter to SKILL.md
+
 # Changelog
 
 All notable changes to ocas-sands will be documented here.

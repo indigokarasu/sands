@@ -1,7 +1,29 @@
 {
   "name": "ocas-sands",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API (driving, transit, walking, biking), recurring event management, and daily schedule briefings for Vesper. Trigger on: 'what's on my calendar', 'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my dentist', 'add travel time', 'any conflicts this week', 'what do I need to prepare for tomorrow', 'undo that'. Do not trigger for general time or timezone questions, reminders without calendar context, or task management.",
   "author": "Indigo Karasu",
-  "email": "mx.indigo.karasu@gmail.com"
+  "email": "mx.indigo.karasu@gmail.com",
+  "skill_type": "system",
+  "filesystem": {
+    "read": [
+      "~/openclaw/data/ocas-sands/",
+      "~/openclaw/journals/ocas-sands/"
+    ],
+    "write": [
+      "~/openclaw/data/ocas-sands/",
+      "~/openclaw/journals/ocas-sands/",
+      "~/openclaw/data/ocas-vesper/intake/"
+    ]
+  },
+  "self_update": {
+    "source": "https://github.com/indigokarasu/sands",
+    "mechanism": "version-checked tarball from GitHub via gh CLI",
+    "command": "sands.update",
+    "requires_binaries": [
+      "gh",
+      "tar",
+      "python3"
+    ]
+  }
 }

@@ -1,3 +1,9 @@
+---
+name: ocas-sands
+description: Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API, and daily schedule briefings for Vesper.
+metadata: {"openclaw":{"emoji":"🏜️"}}
+---
+
 # ocas-sands — Schedule and Navigation System
 
 Version: 1.1.0
