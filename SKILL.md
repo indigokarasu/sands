@@ -1,425 +1,90 @@
 ---
 name: ocas-sands
-description: Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API, and daily schedule briefings for Vesper.
+source: https://github.com/indigokarasu/sands
+install: openclaw skill install https://github.com/indigokarasu/sands
+description: Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API, recurring event management, and daily schedule briefings for Vesper. Trigger phrases: 'what's on my calendar', 'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my dentist', 'add travel time', 'any conflicts this week', 'what do I need to prepare for tomorrow', 'undo that', 'update sands'. Do not use for reminders without calendar context, task management, or general time/timezone questions.
 metadata: {"openclaw":{"emoji":"🏜️"}}
 ---
 
-# ocas-sands — Schedule and Navigation System
+# Sands
 
-Version: 1.2.0
-Author: Indigo Karasu
+Sands manages calendar events through natural language — creating, querying, modifying, and deleting events across personal and work calendars. It detects scheduling conflicts with flexibility classification, finds free time slots, inserts travel time blocks via Google Places API, and emits structured schedule briefs to Vesper for morning and evening briefings.
 
----
 
-## Visibility
+## When to use
 
-public
+- View, query, create, modify, or delete calendar events
+- Find free time slots for a given duration
+- Detect and classify scheduling conflicts
+- Insert travel time blocks between events
+- Generate schedule briefs for Vesper briefings
+- Undo a recent calendar action
 
----
 
-## Trigger Conditions
+## When not to use
 
-Use this skill when the user:
-- Asks what is on their calendar (today, tomorrow, this week, a specific date)
-- Wants to create, reschedule, or cancel an event
-- Asks whether they are free at a time
-- Asks when they are free for a specific duration ("find me a 1-hour slot this week")
-- Asks about conflicts in their schedule
-- Wants a travel time block added between events
-- Asks what they need to prepare for upcoming events
-- Is generating a Vesper morning or evening briefing
-- Wants to undo a recent calendar action
+- Reminders not tied to calendar events
+- Task lists or project management
+- General time or timezone questions
+- Booking travel reservations — use Voyage
+- Sending meeting invitations or communications — use Dispatch
 
-Do not use for: reminders not tied to calendar events, task lists, general time questions.
 
----
+## Responsibility boundary
 
-## Responsibility Boundary
+Sands owns calendar event management, conflict analysis, flexibility classification, travel time insertion via Google Places API, and emitting schedule signals to Vesper.
 
-**Sands is responsible for:** reading and writing calendar events, conflict analysis,
-flexibility classification, travel time insertion via Google Places API, and emitting
-schedule signals to Vesper.
+Sands does not own: communications (Dispatch), travel reservations (Voyage), general research (Sift), entity knowledge (Elephas/Weave).
 
-**Sands is not responsible for:** routing or sending communications (Dispatch), booking
-travel reservations (Voyage), general research (Sift), location or entity knowledge
-(Elephas/Weave).
 
-**Adjacent skills:** Vesper consumes Sands schedule signals for briefings. Sands does not
-depend on Vesper to function.
+## Ontology types
 
----
+Sands works with these types from `spec-ocas-ontology.md`:
 
-## Ontology Mapping
-
-Sands extracts and manages two entity types from `spec-ocas-ontology.md`:
-
-**Place** — event locations resolved via Google Places API during `sands.travel`. Each
-location is resolved to a place ID and coordinates. Sands does not emit Place signals to
-Elephas; location data is retained in `decisions.jsonl` as decision context only.
-
-**Event** (Concept subclass) — calendar events created or modified via `sands.create` and
-`sands.modify`. Sands does not emit Event signals to Elephas; calendar events are managed
-through Google Calendar, not Chronicle.
+- **Place** — event locations resolved via Google Places API during `sands.logistics.travel`. Location data retained in `decisions.jsonl` as decision context only. Sands does not emit Place signals to Elephas.
+- **Event** (Concept subclass) — calendar events managed through Google Calendar, not Chronicle. Sands does not emit Event signals to Elephas.
 
 Sands queries entity context from:
 - **Weave** (read-only) — attendee identity resolution during conflict classification
 - **Elephas / Chronicle** — current location context for travel departure resolution
 
----
-
-## Calendars
-
-Sands operates across three calendar sources configured in `config.json`:
-
-- `primary_calendar_ids` — personal and family Google Calendars (read/write)
-- `work_calendar_id` — work calendar (free/busy read only; never write here)
-
-When querying schedule, always pull from all `primary_calendar_ids`. Overlay work busy
-blocks from `work_calendar_id` as unavailability markers. Never display work event titles
-or descriptions — show only as "Busy (work)" blocks.
-
----
-
-## Timezone Handling
-
-Sands always works in the user's current timezone, resolved in priority order:
-
-1. Explicit user statement ("I'm in Tokyo", "show times in ET")
-2. System location context (Weave → Chronicle)
-3. Calendar timezone setting from Google Calendar API
-4. `default_timezone` from `config.json`
-
-Rules:
-- When displaying times, always use the user's current timezone.
-- If an event's timezone differs from the user's current timezone (e.g., a meeting set in
-  ET while the user is in PT), show both: "2:00 PM PT (5:00 PM ET)".
-- When creating events, set the event timezone to the user's current timezone unless they
-  specify otherwise.
-- Travel calculations must account for timezone boundaries (rare but possible for
-  cross-border travel).
-
----
 
 ## Commands
 
-### `sands.query`
-Pull events for a time window.
+- `sands.calendar.query` — pull events for a time window; merged view with work busy overlay
+- `sands.event.create` — create event from natural language with conflict pre-check and smart duration defaults
+- `sands.event.modify` — update event with recurring scope control and post-modify conflict re-check
+- `sands.event.delete` — cancel event with travel block cleanup and recurring scope control
+- `sands.event.undo` — revert most recent calendar action (within 24 hours)
+- `sands.schedule.free` — find available time slots for a given duration with constraints
+- `sands.schedule.conflicts` — analyze time window for conflicts with flexibility classification
+- `sands.logistics.travel` — insert travel time block between events via Google Places API
+- `sands.briefing.generate` — generate structured schedule summary for Vesper emission
+- `sands.status` — skill health, configured calendars, API connectivity, current timezone
+- `sands.journal` — write journal for the current run; called at end of every run
+- `sands.update` — pull latest from GitHub source; preserves journals and data
 
-Input: natural language time reference ("today", "this week", "March 15")
-Action:
-1. Resolve time window to ISO 8601 range in the user's current timezone
-2. Query all `primary_calendar_ids` via `gcal_list_events`
-3. Query `work_calendar_id` for busy overlay (titles suppressed)
-4. Return chronological merged view with work blocks as "Busy (work)"
-5. Display all-day events at the top of each day's listing, visually distinct from timed events
-6. Write Observation Journal
 
-### `sands.create`
-Create a new event from natural language.
+## Run completion
 
-Input: natural language event description
-Action:
-1. Extract: title, date/time, duration, location (if any), attendees (if any), timezone,
-   all_day flag, recurrence pattern (if any)
-2. If no explicit duration provided, apply smart defaults — see `references/duration_defaults.md`
-3. If the description implies recurrence (e.g., "every Tuesday", "weekly standup"), extract
-   recurrence pattern as RRULE
-4. If the event spans a full day or multiple days ("vacation June 5-8", "all day"), create as
-   an all-day event using date-only start/end
-5. Check for conflicts across all calendars before creating
-6. If conflict exists, surface it and confirm with the user before proceeding
-7. Create via `gcal_create_event` on the appropriate `primary_calendar_id`
-8. If the event has a location and a prior event exists within 90 minutes, offer to run `sands.travel`
-9. Write Action Journal
+After every Sands command:
 
-### `sands.modify`
-Update an existing event from natural language.
+1. Persist event interactions to `events.jsonl` (event_id, calendar_id, title, start, end, action, recurrence_scope, previous_values)
+2. Log material decisions (conflict resolutions, travel insertions) to `decisions.jsonl`
+3. Write journal via `sands.journal` — Observation Journal for query/free/conflicts/status, Action Journal for create/modify/delete/travel/brief/undo
 
-Input: reference to an existing event + desired change
-Action:
-1. Locate event using `gcal_list_events` with search query
-2. Confirm the correct event with the user if ambiguous
-3. If event is recurring, ask user for scope before applying change: "Just this occurrence,
-   this and future occurrences, or all occurrences?"
-4. For attendee changes ("add Sarah", "remove Jake"): resolve names via Weave if only a name
-   is given; add or remove the attendee email. After attendee changes, re-run conflict
-   classification (attendee count affects FIXED/FLEXIBLE).
-5. Apply update via `gcal_update_event`
-6. Re-run conflict check after update
-7. Write Action Journal
 
-Note: attendee changes only apply to `primary_calendar_ids` events. Never modify work
-calendar events.
+## Hard boundaries
 
-### `sands.delete`
-Cancel and remove an existing event.
+- Never write to `work_calendar_id` — read/overlay as busy blocks only
+- All-day events do not trigger conflicts with timed events unless explicitly asked
+- Never auto-resolve conflicts — present options, let the user choose
+- Never use a hardcoded home address or assume a fixed city for travel departure
+- Never silently fall back to distance heuristics if Google Places API is unavailable — surface warning and ask for manual estimate
+- Undo window is 24 hours; recurring event scope changes cannot be undone
 
-Input: reference to an existing event, natural language
-Action:
-1. Locate event using `gcal_list_events` with search query
-2. Confirm the correct event with the user (always confirm before delete)
-3. If event is recurring, ask user: "Delete just this occurrence, this and future
-   occurrences, or all occurrences?" Pass the appropriate scope parameter to the calendar API.
-4. Delete via `gcal_delete_event` on the appropriate calendar
-5. Clean up: if a travel block references this event (title matches `Travel → [event title]`),
-   offer to delete it too
-6. Write Action Journal with action `deleted`
 
-Safety rule: Never delete from `work_calendar_id`. Only delete from `primary_calendar_ids`.
-
-### `sands.free`
-Find available time slots for a given duration.
-
-Input: desired duration (required), time window (defaults to next 7 days), optional
-constraints (e.g., "mornings only", "not before 9am", "not Friday")
-Action:
-1. Pull all events across all calendars for the time window
-2. Compute free intervals by subtracting all event blocks and work busy blocks
-3. Exclude hours outside `working_hours` (from config, default 09:00–18:00) unless the user
-   explicitly asks for off-hours availability
-4. Exclude sleeping hours (00:00–07:00) unless the user explicitly asks
-5. Filter intervals by minimum duration
-6. Apply any user constraints (day-of-week, time-of-day, etc.)
-7. Present top 5 candidate slots, ordered by earliest
-8. Write Observation Journal
-
-### `sands.conflicts`
-Analyze a time window for scheduling conflicts and classify event flexibility.
-
-Input: time window (defaults to next 7 days if unspecified)
-Action:
-1. Pull all events across `primary_calendar_ids` and work busy overlay
-2. Identify overlapping or back-to-back events with insufficient gap
-3. For each conflict pair, classify flexibility — see `references/flexibility_rules.md`
-4. Present each conflict with: event names, times, flexibility classification, suggested resolution
-5. All-day events do not trigger conflicts with timed events unless the user explicitly asks
-6. Do not auto-resolve conflicts. Present options only
-7. Write Observation Journal
-
-### `sands.travel`
-Insert a travel time block between two consecutive events using Google Places API.
-
-Input: target event (the destination event), optional travel mode (`driving`, `transit`,
-`walking`, `bicycling`), or invoked automatically after `sands.create`
-Action:
-1. Identify destination event and its location string
-2. Look at the immediately prior event on the calendar
-3. Determine departure point — see `references/travel_time_logic.md`
-4. Call Google Places API to resolve both locations to place coordinates
-5. Call Google Places Distance Matrix API to get travel time using the selected mode
-6. If no mode specified, infer from distance — see `references/travel_time_logic.md`
-7. Add `travel_buffer_minutes` (from config, default 10) to the result
-8. Check that the gap between events is sufficient — if not, surface a conflict
-9. Create travel event with mode-aware title and emoji — see `references/travel_time_logic.md`
-10. Write Action Journal
-
-### `sands.brief`
-Generate a structured schedule summary for Vesper emission.
-
-Input: target date (defaults to tomorrow for evening brief, today for morning brief)
-Brief type is determined by calling context:
-- **Evening brief (next day):** full event list with context, conflicts flagged, prep items called out
-- **Morning brief (today):** full day-at-a-glance with prep items highlighted
-
-See `references/vesper_emit_format.md` for the output schema.
-Action:
-1. Pull events for the target date via `sands.query`
-2. Analyze for conflicts, prep signals, and travel gaps
-3. Build InsightProposal payload
-4. Write to `~/openclaw/data/ocas-vesper/intake/{proposal_id}.json`
-5. Write Action Journal
-
-### `sands.undo`
-Revert the most recent calendar action.
-
-Input: none (defaults to last action) or "undo [event name]"
-Action:
-1. Read the most recent `created`, `modified`, or `deleted` entry from `events.jsonl`
-2. For `created`: delete the event
-3. For `modified`: restore previous values from the `previous_values` field in `events.jsonl`
-4. For `deleted`: re-create the event from the stored event details in `events.jsonl`
-5. Confirm with the user before executing the reversal
-6. Write Action Journal
-
-Limitations:
-- Only the most recent action per event is undoable
-- Undo window: 24 hours. After that, direct the user to `sands.modify` or `sands.delete`
-- Recurring event scope changes cannot be undone — warn the user at undo time
-
-### `sands.init`
-Initialize Sands data directories, config, and background tasks. Runs automatically on first invocation.
-
-### `sands.update`
-Pull latest release from GitHub. Preserves `~/openclaw/data/ocas-sands/` and journals.
-
-### `sands.status`
-Return skill health and configuration summary.
-
-Output: SkillStatus object with: configured calendar IDs, Google Places API connectivity,
-last run timestamp, last journal path, current timezone.
-
----
-
-## Background Tasks
-
-Registered during `sands.init`. Always check existing jobs before registering:
-
-```bash
-openclaw cron list
-```
-
-| Job name | Schedule | Command | Purpose |
-|---|---|---|---|
-| `sands:morning-brief` | `0 6 * * *` | `sands.brief` | Generate today's schedule brief for Vesper morning briefing |
-| `sands:evening-brief` | `0 20 * * *` | `sands.brief` | Generate tomorrow's schedule brief for Vesper evening briefing |
-| `sands:conflict-scan` | `0 7 * * *` | `sands.conflicts` | Daily conflict scan for upcoming 7 days |
-| `sands:travel-check` | `0 7 * * *` | `sands.travel` | Check next day's events for missing travel blocks |
-| `sands:update` | `0 0 * * *` | `sands.update` | Self-update from GitHub source |
-
-All cron jobs: `sessionTarget: isolated`, `lightContext: true`, `wakeMode: next-heartbeat`.
-
-Registration during `sands.init`:
-```
-openclaw cron list
-# If sands:morning-brief absent:
-openclaw cron add --name sands:morning-brief --schedule "0 6 * * *" --command "sands.brief" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
-# If sands:evening-brief absent:
-openclaw cron add --name sands:evening-brief --schedule "0 20 * * *" --command "sands.brief" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
-# If sands:conflict-scan absent:
-openclaw cron add --name sands:conflict-scan --schedule "0 7 * * *" --command "sands.conflicts" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
-# If sands:travel-check absent:
-openclaw cron add --name sands:travel-check --schedule "0 7 * * *" --command "sands.travel" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
-# If sands:update absent:
-openclaw cron add --name sands:update --schedule "0 0 * * *" --command "sands.update" --sessionTarget isolated --lightContext true --timezone America/Los_Angeles
-```
-
----
-
-## Initialization
-
-On first invocation of any Sands command, run `sands.init`:
-
-1. Create `~/openclaw/data/ocas-sands/` directory
-2. Write default `config.json` with ConfigBase fields if absent
-3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`
-4. Create `~/openclaw/journals/ocas-sands/`
-5. Register cron jobs listed above if not already present (check `openclaw cron list` first)
-6. Log initialization as a DecisionRecord in `decisions.jsonl`
-
----
-
-## Location Context for Travel
-
-Sands never uses a hardcoded home address or assumes any fixed city.
-
-Priority order for resolving departure location:
-1. Prior event within 90 minutes with a specific location → use that location
-2. No prior event (or prior event has no location): query current location from the system
-   (Weave → Chronicle → user's current lodging or home)
-3. If traveling (hotel, Airbnb, out-of-town context): depart from current lodging
-4. If at home: depart from home location
-5. If location context unavailable: ask the user before proceeding
-
-Never back-calculate travel from a home city if the user is traveling elsewhere.
-See `references/travel_time_logic.md` for full decision rules and Google Places API call sequence.
-
-
----
-
-## Google Places API Usage
-
-Sands uses Google Places API for all travel time calculations.
-
-API calls used:
-- **Places Search / Find Place** — resolve a location string to a place ID and coordinates
-- **Distance Matrix API** — get travel time between two coordinates (supports driving,
-  transit, walking, bicycling modes)
-
-Fallback (API unavailable): surface a warning to the user and ask them to confirm an
-estimated travel time manually. Do not silently use a distance heuristic.
-
----
-
-## Recurring Event Handling
-
-Sands supports recurring events across create, modify, and delete commands.
-
-**Creating recurring events:**
-- Support patterns: daily, weekly, biweekly, monthly, yearly, and custom (e.g., "every
-  Tuesday and Thursday", "first Monday of each month")
-- Extract recurrence as RRULE from natural language in `sands.create`
-- If the user says "every Tuesday" without an end date, default to no end date (infinite
-  recurrence) and confirm with the user
-
-**Modifying recurring events:**
-- Always ask for scope before applying: "Just this occurrence, this and future occurrences,
-  or all occurrences?"
-- Pass the appropriate scope parameter to `gcal_update_event`
-- Re-run conflict check for the affected scope
-
-**Deleting recurring events:**
-- Same scope question as modify
-- Pass scope to `gcal_delete_event`
-- Clean up associated travel blocks for affected occurrences
-
----
-
-## Conflict Detection
-
-Run conflict detection:
-- Automatically after `sands.create` and `sands.modify`
-- On demand via `sands.conflicts`
-
-A conflict exists when:
-- Two events overlap by any amount of time, OR
-- Travel time to an event would need to begin before the preceding event ends
-
-All-day events are treated as low-priority background blocks: they do not trigger
-conflicts with timed events unless the user explicitly asks.
-
-Do not auto-resolve conflicts. Present them with a flexibility assessment and candidate
-resolutions for the user to choose from. See `references/flexibility_rules.md`.
-
----
-
-## Preparation Detection
-
-On morning briefs, flag events that likely need preparation.
-See `references/preparation_signals.md` for the full signal list and output format.
-
----
-
-## Optional Skill Cooperation
-
-Sands may cooperate with these skills when present but never depends on them:
-
-- **Weave** — resolve attendee identity or current location context
-- **Elephas** — query current location or travel context from Chronicle
-- **Voyage** — if a travel reservation is detected in the calendar, surface it for
-  Voyage to manage; Sands does not book reservations itself
-
----
-
-## Journal Outputs
-
-| Command | Journal Type |
-|---|---|
-| `sands.query` | Observation |
-| `sands.free` | Observation |
-| `sands.conflicts` | Observation |
-| `sands.status` | Observation |
-| `sands.create` | Action |
-| `sands.modify` | Action |
-| `sands.delete` | Action |
-| `sands.travel` | Action |
-| `sands.brief` | Action |
-| `sands.undo` | Action |
-
-Journal path: `~/openclaw/journals/ocas-sands/YYYY-MM-DD/{run_id}.json`
-
----
-
-## Storage Layout
+## Storage layout
 
 ```
 ~/openclaw/data/ocas-sands/
@@ -430,99 +95,142 @@ Journal path: `~/openclaw/journals/ocas-sands/YYYY-MM-DD/{run_id}.json`
   YYYY-MM-DD/{run_id}.json
 ```
 
-`events.jsonl` — append-only log of calendar events created, modified, deleted, or read by
-Sands. One record per event interaction: `event_id`, `calendar_id`, `title`, `start`, `end`,
-`action` (`created|modified|deleted|queried`), `recurrence_scope`
-(`single|this_and_future|all`, optional — present only for recurring event actions),
-`previous_values` (optional — present only for `modified` actions, stores the prior field
-values to support `sands.undo`), `run_id`, `timestamp`.
-
-`config.json` minimum fields:
-
+Default config.json:
 ```json
 {
   "skill_id": "ocas-sands",
-  "skill_version": "1.1.0",
+  "skill_version": "2.0.0",
   "config_version": "2",
   "created_at": "",
   "updated_at": "",
-  "primary_calendar_ids": [
-    "primary",
-    "family_calendar_id@group.calendar.google.com"
-  ],
-  "work_calendar_id": "work@company.com",
+  "primary_calendar_ids": ["primary"],
+  "work_calendar_id": "",
   "google_places_api_key": "",
   "travel_buffer_minutes": 10,
   "default_travel_mode": "driving",
   "conflict_lookahead_days": 7,
   "default_timezone": "America/Los_Angeles",
-  "working_hours": {
-    "start": "09:00",
-    "end": "18:00"
-  },
-  "retention": {
-    "days": 90,
-    "max_records": 10000
-  }
+  "working_hours": { "start": "09:00", "end": "18:00" },
+  "retention": { "days": 90, "max_records": 10000 }
 }
 ```
 
----
 
-## Vesper Interface
+## OKRs
 
-Sands emits to: `~/openclaw/data/ocas-vesper/intake/{proposal_id}.json`
-Format: InsightProposal schema from `spec-ocas-shared-schemas.md`
-
-`proposal_type` varies by brief type:
-- Evening briefs: `routine_prediction`
-- Morning briefs: `preparation_checklist`
-
-If `preparation_checklist` is not yet in the InsightProposal schema enum, use
-`actionable_insight` as a fallback, or request the type be added to
-`spec-ocas-shared-schemas.md`.
-
-See `references/vesper_emit_format.md` for the full payload structure.
-
----
-
-## Validation Rules
-
-Before creating any event:
-- Confirm no exact-duplicate title+time exists on that calendar
-- Confirm the slot is not blocked by a work busy period (warn, do not block)
-
-Before inserting travel:
-- Gap must be ≥ calculated travel time + buffer. If not, surface conflict instead of
-  creating a truncated or overlapping travel block.
-
-On journal write:
-- Every run produces a journal file per `spec-ocas-journal.md`
-- Required `run_identity` fields: `comparison_group_id`, `run_id`, `role`, `skill_name`,
-  `skill_version`, `timestamp_start`, `timestamp_end`, `normalized_input_hash`,
-  `journal_spec_version`, `journal_type`
-- Required `metrics` fields: `success_rate`, `retry_rate`, `latency_ms`
-- Required `okr_evaluation` block — see Skill OKRs below
-- `decision` block must include: calendars queried, events affected (by title),
-  Google Places API calls made (if any)
-
----
-
-## Skill OKRs
-
-Skill-specific OKRs evaluated in the `okr_evaluation` journal block.
+Universal OKRs from spec-ocas-journal.md apply to all runs.
 
 ```yaml
 skill_okrs:
   - name: conflict_detection_accuracy
-    target: ">= 0.95"
-    description: "Fraction of actual conflicts correctly identified and surfaced"
+    metric: fraction of actual conflicts correctly identified and surfaced
+    direction: maximize
+    target: 0.95
+    evaluation_window: 30_runs
   - name: travel_time_api_success_rate
-    target: ">= 0.90"
-    description: "Fraction of sands.travel runs that complete via Google Places API (not manual fallback)"
+    metric: fraction of sands.logistics.travel runs completing via Google Places API
+    direction: maximize
+    target: 0.90
+    evaluation_window: 30_runs
   - name: calendar_write_success_rate
-    target: ">= 0.98"
-    description: "Fraction of sands.create and sands.modify runs with no calendar API error"
+    metric: fraction of create/modify runs with no calendar API error
+    direction: maximize
+    target: 0.98
+    evaluation_window: 30_runs
 ```
 
-Universal OKRs (`success_rate` ≥ 0.95, `retry_rate` ≤ 0.10) also apply per `spec-ocas-journal.md` §13.
+
+## Optional skill cooperation
+
+- Weave — attendee identity resolution and current location context
+- Elephas — current location or travel context from Chronicle
+- Voyage — travel reservations detected in calendar surfaced for Voyage to manage
+- Vesper — Vesper reads Sands schedule briefs at `~/openclaw/data/ocas-vesper/intake/` during briefing generation (cooperative write; Sands pushes to Vesper's intake)
+
+
+## Journal outputs
+
+- Observation Journal — sands.calendar.query, sands.schedule.free, sands.schedule.conflicts, sands.status
+- Action Journal — sands.event.create, sands.event.modify, sands.event.delete, sands.event.undo, sands.logistics.travel, sands.briefing.generate
+
+
+## Initialization
+
+On first invocation of any Sands command, run `sands.init`:
+
+1. Create `~/openclaw/data/ocas-sands/` directory
+2. Write default `config.json` with ConfigBase fields if absent
+3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`
+4. Create `~/openclaw/journals/ocas-sands/`
+5. Register cron jobs listed below if not already present (check `openclaw cron list` first)
+6. Log initialization as a DecisionRecord in `decisions.jsonl`
+
+
+## Background tasks
+
+Registered during `sands.init`. Always check existing jobs before registering:
+
+| Job name | Schedule | Command | Purpose |
+|---|---|---|---|
+| `sands:morning-brief` | `0 6 * * *` | `sands.briefing.generate` | Today's schedule brief for Vesper |
+| `sands:evening-brief` | `0 20 * * *` | `sands.briefing.generate` | Tomorrow's schedule brief for Vesper |
+| `sands:conflict-scan` | `0 7 * * *` | `sands.schedule.conflicts` | Daily conflict scan for upcoming 7 days |
+| `sands:travel-check` | `0 7 * * *` | `sands.logistics.travel` | Check next day's events for missing travel blocks |
+| `sands:update` | `0 0 * * *` | `sands.update` | Self-update from GitHub source |
+
+All cron jobs use: `--session isolated --light-context --tz America/Los_Angeles`.
+
+Registration during `sands.init`:
+```
+openclaw cron list
+# If sands:morning-brief absent:
+openclaw cron add --name sands:morning-brief --cron "0 6 * * *" --session isolated --message "sands.briefing.generate" --light-context --tz America/Los_Angeles
+# If sands:evening-brief absent:
+openclaw cron add --name sands:evening-brief --cron "0 20 * * *" --session isolated --message "sands.briefing.generate" --light-context --tz America/Los_Angeles
+# If sands:conflict-scan absent:
+openclaw cron add --name sands:conflict-scan --cron "0 7 * * *" --session isolated --message "sands.schedule.conflicts" --light-context --tz America/Los_Angeles
+# If sands:travel-check absent:
+openclaw cron add --name sands:travel-check --cron "0 7 * * *" --session isolated --message "sands.logistics.travel" --light-context --tz America/Los_Angeles
+# If sands:update absent:
+openclaw cron add --name sands:update --cron "0 0 * * *" --session isolated --message "sands.update" --light-context --tz America/Los_Angeles
+```
+
+
+## Self-update
+
+`sands.update` pulls the latest package from the `source:` URL in this file's frontmatter. Runs silently — no output unless the version changed or an error occurred.
+
+1. Read `source:` from frontmatter → extract `{owner}/{repo}` from URL
+2. Read local version from `skill.json`
+3. Fetch remote version: `gh api "repos/{owner}/{repo}/contents/skill.json" --jq '.content' | base64 -d | python3 -c "import sys,json;print(json.load(sys.stdin)['version'])"`
+4. If remote version equals local version → stop silently
+5. Download and install:
+   ```bash
+   TMPDIR=$(mktemp -d)
+   gh api "repos/{owner}/{repo}/tarball/main" > "$TMPDIR/archive.tar.gz"
+   mkdir "$TMPDIR/extracted"
+   tar xzf "$TMPDIR/archive.tar.gz" -C "$TMPDIR/extracted" --strip-components=1
+   cp -R "$TMPDIR/extracted/"* ./
+   rm -rf "$TMPDIR"
+   ```
+6. On failure → retry once. If second attempt fails, report the error and stop.
+7. Output exactly: `I updated Sands from version {old} to {new}`
+
+
+## Visibility
+
+public
+
+
+## Support file map
+
+| File | When to read |
+|---|---|
+| `references/calendar_config.md` | Before configuring calendars, timezone handling, or Google Places API |
+| `references/duration_defaults.md` | Before `sands.event.create`; explains smart duration defaults |
+| `references/flexibility_rules.md` | Before `sands.schedule.conflicts`; explains FIXED/FLEXIBLE/AMBIGUOUS classification |
+| `references/conflict_detection.md` | Before conflict analysis; explains detection rules and validation |
+| `references/recurring_events.md` | Before creating/modifying/deleting recurring events; explains scope handling |
+| `references/preparation_signals.md` | Before `sands.briefing.generate`; explains prep signal detection |
+| `references/travel_time_logic.md` | Before `sands.logistics.travel`; explains departure resolution and mode inference |
+| `references/vesper_emit_format.md` | Before `sands.briefing.generate`; explains InsightProposal payload schema |
