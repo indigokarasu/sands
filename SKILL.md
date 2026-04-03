@@ -6,7 +6,7 @@ metadata: {"openclaw":{"emoji":"🏜️"}}
 
 # ocas-sands — Schedule and Navigation System
 
-Version: 1.1.0
+Version: 1.2.0
 Author: Indigo Karasu
 
 ---
@@ -246,11 +246,65 @@ Limitations:
 - Undo window: 24 hours. After that, direct the user to `sands.modify` or `sands.delete`
 - Recurring event scope changes cannot be undone — warn the user at undo time
 
+### `sands.init`
+Initialize Sands data directories, config, and background tasks. Runs automatically on first invocation.
+
+### `sands.update`
+Pull latest release from GitHub. Preserves `~/openclaw/data/ocas-sands/` and journals.
+
 ### `sands.status`
 Return skill health and configuration summary.
 
 Output: SkillStatus object with: configured calendar IDs, Google Places API connectivity,
 last run timestamp, last journal path, current timezone.
+
+---
+
+## Background Tasks
+
+Registered during `sands.init`. Always check existing jobs before registering:
+
+```bash
+openclaw cron list
+```
+
+| Job name | Schedule | Command | Purpose |
+|---|---|---|---|
+| `sands:morning-brief` | `0 6 * * *` | `sands.brief` | Generate today's schedule brief for Vesper morning briefing |
+| `sands:evening-brief` | `0 20 * * *` | `sands.brief` | Generate tomorrow's schedule brief for Vesper evening briefing |
+| `sands:conflict-scan` | `0 7 * * *` | `sands.conflicts` | Daily conflict scan for upcoming 7 days |
+| `sands:travel-check` | `0 7 * * *` | `sands.travel` | Check next day's events for missing travel blocks |
+| `sands:update` | `0 0 * * *` | `sands.update` | Self-update from GitHub source |
+
+All cron jobs: `sessionTarget: isolated`, `lightContext: true`, `wakeMode: next-heartbeat`.
+
+Registration during `sands.init`:
+```
+openclaw cron list
+# If sands:morning-brief absent:
+openclaw cron add --name sands:morning-brief --schedule "0 6 * * *" --command "sands.brief" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
+# If sands:evening-brief absent:
+openclaw cron add --name sands:evening-brief --schedule "0 20 * * *" --command "sands.brief" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
+# If sands:conflict-scan absent:
+openclaw cron add --name sands:conflict-scan --schedule "0 7 * * *" --command "sands.conflicts" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
+# If sands:travel-check absent:
+openclaw cron add --name sands:travel-check --schedule "0 7 * * *" --command "sands.travel" --sessionTarget isolated --lightContext true --wakeMode next-heartbeat --timezone America/Los_Angeles
+# If sands:update absent:
+openclaw cron add --name sands:update --schedule "0 0 * * *" --command "sands.update" --sessionTarget isolated --lightContext true --timezone America/Los_Angeles
+```
+
+---
+
+## Initialization
+
+On first invocation of any Sands command, run `sands.init`:
+
+1. Create `~/openclaw/data/ocas-sands/` directory
+2. Write default `config.json` with ConfigBase fields if absent
+3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`
+4. Create `~/openclaw/journals/ocas-sands/`
+5. Register cron jobs listed above if not already present (check `openclaw cron list` first)
+6. Log initialization as a DecisionRecord in `decisions.jsonl`
 
 ---
 

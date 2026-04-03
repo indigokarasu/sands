@@ -1,3 +1,14 @@
+## [1.2.0] - 2026-04-02
+
+### Added
+- Background tasks: sands:morning-brief, sands:evening-brief, sands:conflict-scan, sands:travel-check, sands:update
+- sands.init command for directory/config/cron setup on first run
+- sands.update command for self-update from GitHub
+- Initialization section in SKILL.md with full cron registration instructions
+
+### Fixed
+- Missing scheduled_tasks in skill.json (brief, travel, conflicts were not being registered as background tasks)
+
 ## [1.1.1] - 2026-04-02
 
 ### Changed
