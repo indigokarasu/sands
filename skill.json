@@ -1,6 +1,6 @@
 {
   "name": "ocas-sands",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API (driving, transit, walking, biking), recurring event management, and daily schedule briefings for Vesper. Trigger on: 'what's on my calendar', 'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my dentist', 'add travel time', 'any conflicts this week', 'what do I need to prepare for tomorrow', 'undo that'. Do not trigger for general time or timezone questions, reminders without calendar context, or task management.",
   "author": "Indigo Karasu",
   "email": "mx.indigo.karasu@gmail.com",
@@ -25,5 +25,37 @@
       "tar",
       "python3"
     ]
-  }
+  },
+  "scheduled_tasks": [
+    {
+      "name": "sands:morning-brief",
+      "schedule": "0 6 * * *",
+      "command": "sands.brief",
+      "description": "Generate today's schedule brief for Vesper morning briefing"
+    },
+    {
+      "name": "sands:evening-brief",
+      "schedule": "0 20 * * *",
+      "command": "sands.brief",
+      "description": "Generate tomorrow's schedule brief for Vesper evening briefing"
+    },
+    {
+      "name": "sands:conflict-scan",
+      "schedule": "0 7 * * *",
+      "command": "sands.conflicts",
+      "description": "Daily conflict scan for upcoming 7 days"
+    },
+    {
+      "name": "sands:travel-check",
+      "schedule": "0 7 * * *",
+      "command": "sands.travel",
+      "description": "Check next day's events for missing travel blocks and insert automatically"
+    },
+    {
+      "name": "sands:update",
+      "schedule": "0 0 * * *",
+      "command": "sands.update",
+      "description": "Self-update from GitHub source"
+    }
+  ]
 }
