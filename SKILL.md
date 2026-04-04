@@ -234,3 +234,13 @@ public
 | `references/preparation_signals.md` | Before `sands.briefing.generate`; explains prep signal detection |
 | `references/travel_time_logic.md` | Before `sands.logistics.travel`; explains departure resolution and mode inference |
 | `references/vesper_emit_format.md` | Before `sands.briefing.generate`; explains InsightProposal payload schema |
+
+## Update command
+
+This skill self-updates every 24 hours via:
+
+```bash
+openclaw sands.update
+```
+
+This pulls the latest version from GitHub and restarts the skill's background tasks if applicable.
