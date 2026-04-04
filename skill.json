@@ -1,6 +1,6 @@
 {
   "name": "ocas-sands",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API, recurring event management, and daily schedule briefings for Vesper. Trigger phrases: 'what\\'s on my calendar', 'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my dentist', 'add travel time', 'any conflicts this week', 'what do I need to prepare for tomorrow', 'undo that', 'update sands'. Do not use for reminders without calendar context, task management, or general time/timezone questions.",
   "author": "Indigo Karasu",
   "email": "mx.indigo.karasu@gmail.com",
