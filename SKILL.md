@@ -1,9 +1,77 @@
 ---
 name: ocas-sands
-source: https://github.com/indigokarasu/sands
-install: openclaw skill install https://github.com/indigokarasu/sands
-description: Calendar management skill. Use when the user wants to view, query, create, modify, delete, or analyze their calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments using Google Places API, recurring event management, and daily schedule briefings for Vesper. Trigger phrases: 'what's on my calendar', 'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my dentist', 'add travel time', 'any conflicts this week', 'what do I need to prepare for tomorrow', 'undo that', 'update sands'. Do not use for reminders without calendar context, task management, or general time/timezone questions.
-metadata: {"openclaw":{"emoji":"🏜️"}}
+description: >
+  Calendar management skill. Use when the user wants to view, query, create,
+  modify, delete, or analyze their calendar events. Handles natural-language
+  scheduling, conflict detection with flexibility classification, free slot
+  finding, automatic travel time event insertion between consecutive
+  appointments using Google Places API, recurring event management, and daily
+  schedule briefings for Vesper. Trigger phrases: 'what\'s on my calendar',
+  'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my
+  dentist', 'add travel time', 'any conflicts this week', 'what do I need to
+  prepare for tomorrow', 'undo that', 'update sands'. Do not use for reminders
+  without calendar context, task management, or general time/timezone
+  questions.
+metadata:
+  author: Indigo Karasu
+  email: mx.indigo.karasu@gmail.com
+  version: "2.1.0"
+  hermes:
+    tags: [calendar, scheduling, events]
+    category: execution
+    cron:
+      - name: "sands:morning-brief"
+        schedule: "0 6 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:evening-brief"
+        schedule: "0 20 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:conflict-scan"
+        schedule: "0 7 * * *"
+        command: "sands.schedule.conflicts"
+      - name: "sands:travel-check"
+        schedule: "0 7 * * *"
+        command: "sands.logistics.travel"
+      - name: "sands:update"
+        schedule: "0 0 * * *"
+        command: "sands.update"
+  openclaw:
+    skill_type: system
+    visibility: public
+    filesystem:
+      read:
+        - "$OCAS_DATA_ROOT/data/ocas-sands/"
+        - "$OCAS_DATA_ROOT/journals/ocas-sands/"
+      write:
+        - "$OCAS_DATA_ROOT/data/ocas-sands/"
+        - "$OCAS_DATA_ROOT/journals/ocas-sands/"
+        - "$OCAS_DATA_ROOT/data/ocas-vesper/intake/"
+    self_update:
+      source: "https://github.com/indigokarasu/sands"
+      mechanism: "version-checked tarball from GitHub via gh CLI"
+      command: "sands.update"
+      requires_binaries: [gh, tar, python3]
+    requires:
+      credentials:
+        - name: "GOOGLE_PLACES_API_KEY"
+          description: "Google Places API key for travel time calculations"
+          required: true
+    cron:
+      - name: "sands:morning-brief"
+        schedule: "0 6 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:evening-brief"
+        schedule: "0 20 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:conflict-scan"
+        schedule: "0 7 * * *"
+        command: "sands.schedule.conflicts"
+      - name: "sands:travel-check"
+        schedule: "0 7 * * *"
+        command: "sands.logistics.travel"
+      - name: "sands:update"
+        schedule: "0 0 * * *"
+        command: "sands.update"
 ---
 
 # Sands
@@ -87,11 +155,11 @@ After every Sands command:
 ## Storage layout
 
 ```
-~/openclaw/data/ocas-sands/
+$OCAS_DATA_ROOT/data/ocas-sands/
   config.json
   decisions.jsonl
   events.jsonl
-~/openclaw/journals/ocas-sands/
+$OCAS_DATA_ROOT/journals/ocas-sands/
   YYYY-MM-DD/{run_id}.json
 ```
 
@@ -145,7 +213,7 @@ skill_okrs:
 - Weave — attendee identity resolution and current location context
 - Elephas — current location or travel context from Chronicle
 - Voyage — travel reservations detected in calendar surfaced for Voyage to manage
-- Vesper — Vesper reads Sands schedule briefs at `~/openclaw/data/ocas-vesper/intake/` during briefing generation (cooperative write; Sands pushes to Vesper's intake)
+- Vesper — Vesper reads Sands schedule briefs at `$OCAS_DATA_ROOT/data/ocas-vesper/intake/` during briefing generation (cooperative write; Sands pushes to Vesper's intake)
 
 
 ## Journal outputs
@@ -158,11 +226,11 @@ skill_okrs:
 
 On first invocation of any Sands command, run `sands.init`:
 
-1. Create `~/openclaw/data/ocas-sands/` directory
+1. Create `$OCAS_DATA_ROOT/data/ocas-sands/` directory
 2. Write default `config.json` with ConfigBase fields if absent
 3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`
-4. Create `~/openclaw/journals/ocas-sands/`
-5. Register cron jobs listed below if not already present (check `openclaw cron list` first)
+4. Create `$OCAS_DATA_ROOT/journals/ocas-sands/`
+5. Register cron jobs listed below if not already present (check the platform scheduling registry first)
 6. Log initialization as a DecisionRecord in `decisions.jsonl`
 
 
@@ -182,17 +250,16 @@ All cron jobs use: `--session isolated --light-context --tz America/Los_Angeles`
 
 Registration during `sands.init`:
 ```
-openclaw cron list
-# If sands:morning-brief absent:
-openclaw cron add --name sands:morning-brief --cron "0 6 * * *" --session isolated --message "sands.briefing.generate" --light-context --tz America/Los_Angeles
+# Check platform scheduling registry for existing tasks
+# Task declared in SKILL.md frontmatter metadata.{platform}.cron
 # If sands:evening-brief absent:
-openclaw cron add --name sands:evening-brief --cron "0 20 * * *" --session isolated --message "sands.briefing.generate" --light-context --tz America/Los_Angeles
+# Task declared in SKILL.md frontmatter metadata.{platform}.cron
 # If sands:conflict-scan absent:
-openclaw cron add --name sands:conflict-scan --cron "0 7 * * *" --session isolated --message "sands.schedule.conflicts" --light-context --tz America/Los_Angeles
+# Task declared in SKILL.md frontmatter metadata.{platform}.cron
 # If sands:travel-check absent:
-openclaw cron add --name sands:travel-check --cron "0 7 * * *" --session isolated --message "sands.logistics.travel" --light-context --tz America/Los_Angeles
+# Task declared in SKILL.md frontmatter metadata.{platform}.cron
 # If sands:update absent:
-openclaw cron add --name sands:update --cron "0 0 * * *" --session isolated --message "sands.update" --light-context --tz America/Los_Angeles
+# Task declared in SKILL.md frontmatter metadata.{platform}.cron
 ```
 
 

@@ -7,7 +7,7 @@ Used by: `sands.brief`
 ## Delivery Path
 
 Write file to:
-`~/openclaw/data/ocas-vesper/intake/{proposal_id}.json`
+`$OCAS_DATA_ROOT/data/ocas-vesper/intake/{proposal_id}.json`
 
 Format: InsightProposal schema (spec-ocas-shared-schemas.md).
 

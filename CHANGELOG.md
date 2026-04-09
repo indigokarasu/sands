@@ -15,6 +15,18 @@
 
 # CHANGELOG
 
+## [2.1.0] - 2026-04-08
+
+### Multi-Platform Compatibility Migration
+
+- Adopted agentskills.io open standard for skill packaging
+- Replaced skill.json with YAML frontmatter in SKILL.md
+- Replaced hardcoded ~/openclaw/ paths with $OCAS_DATA_ROOT/ for platform portability
+- Abstracted cron/heartbeat registration to declarative metadata pattern
+- Added metadata.hermes and metadata.openclaw extension points
+- Compatible with both OpenClaw and Hermes Agent
+
+
 ## [2.0.0] - 2026-04-02
 
 ### Changed
