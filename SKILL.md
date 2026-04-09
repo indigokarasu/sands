@@ -15,7 +15,7 @@ description: >
 metadata:
   author: Indigo Karasu
   email: mx.indigo.karasu@gmail.com
-  version: "2.1.0"
+  version: "2.1.1"
   hermes:
     tags: [calendar, scheduling, events]
     category: execution
@@ -40,12 +40,11 @@ metadata:
     visibility: public
     filesystem:
       read:
-        - "$OCAS_DATA_ROOT/data/ocas-sands/"
-        - "$OCAS_DATA_ROOT/journals/ocas-sands/"
+        - "{agent_root}/commons/data/ocas-sands/"
+        - "{agent_root}/commons/journals/ocas-sands/"
       write:
-        - "$OCAS_DATA_ROOT/data/ocas-sands/"
-        - "$OCAS_DATA_ROOT/journals/ocas-sands/"
-        - "$OCAS_DATA_ROOT/data/ocas-vesper/intake/"
+        - "{agent_root}/commons/data/ocas-sands/"
+        - "{agent_root}/commons/journals/ocas-sands/"
     self_update:
       source: "https://github.com/indigokarasu/sands"
       mechanism: "version-checked tarball from GitHub via gh CLI"
@@ -155,11 +154,11 @@ After every Sands command:
 ## Storage layout
 
 ```
-$OCAS_DATA_ROOT/data/ocas-sands/
+{agent_root}/commons/data/ocas-sands/
   config.json
   decisions.jsonl
   events.jsonl
-$OCAS_DATA_ROOT/journals/ocas-sands/
+{agent_root}/commons/journals/ocas-sands/
   YYYY-MM-DD/{run_id}.json
 ```
 
@@ -213,7 +212,7 @@ skill_okrs:
 - Weave — attendee identity resolution and current location context
 - Elephas — current location or travel context from Chronicle
 - Voyage — travel reservations detected in calendar surfaced for Voyage to manage
-- Vesper — Vesper reads Sands schedule briefs at `$OCAS_DATA_ROOT/data/ocas-vesper/intake/` during briefing generation (cooperative write; Sands pushes to Vesper's intake)
+- Vesper — Vesper reads Sands schedule briefs at journal payload fields (see interfaces specification) during briefing generation (cooperative write; Sands pushes to Vesper (via journal briefing payload))
 
 
 ## Journal outputs
@@ -226,10 +225,10 @@ skill_okrs:
 
 On first invocation of any Sands command, run `sands.init`:
 
-1. Create `$OCAS_DATA_ROOT/data/ocas-sands/` directory
+1. Create `{agent_root}/commons/data/ocas-sands/` directory
 2. Write default `config.json` with ConfigBase fields if absent
 3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`
-4. Create `$OCAS_DATA_ROOT/journals/ocas-sands/`
+4. Create `{agent_root}/commons/journals/ocas-sands/`
 5. Register cron jobs listed below if not already present (check the platform scheduling registry first)
 6. Log initialization as a DecisionRecord in `decisions.jsonl`
 

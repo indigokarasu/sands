@@ -7,7 +7,7 @@ Used by: `sands.brief`
 ## Delivery Path
 
 Write file to:
-`$OCAS_DATA_ROOT/data/ocas-vesper/intake/{proposal_id}.json`
+the `briefing` payload field in the journal entry
 
 Format: InsightProposal schema (spec-ocas-shared-schemas.md).
 
@@ -49,7 +49,7 @@ The `suggested_follow_up` field carries the full schedule payload as a JSON-enco
 Vesper must JSON-parse this field to obtain the structured schedule data.
 The InsightProposal schema defines this field as `string|null`; encoding the payload as a
 string satisfies the type contract while allowing Vesper to carry structured schedule data
-through the standard intake path.
+through the standard journal briefing payload.
 
 ```json
 {
