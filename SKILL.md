@@ -15,7 +15,7 @@ description: >
 metadata:
   author: Indigo Karasu
   email: mx.indigo.karasu@gmail.com
-  version: "2.1.1"
+  version: "2.1.2"
   hermes:
     tags: [calendar, scheduling, events]
     category: execution
@@ -306,7 +306,7 @@ public
 This skill self-updates every 24 hours via:
 
 ```bash
-openclaw sands.update
+sands.update
 ```
 
 This pulls the latest version from GitHub and restarts the skill's background tasks if applicable.
