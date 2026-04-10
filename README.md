@@ -58,7 +58,7 @@ Sands treats your calendar as a structured scheduling surface. It reads across p
 ### v1.2.0 -- April 2, 2026
 - Added background tasks for brief, conflict scan, travel check, and self-update
 - Added sands.init and sands.update commands
-- Fixed missing scheduled_tasks in skill.json
+- Fixed missing scheduled_tasks in SKILL.md frontmatter
 
 ### v1.1.0 -- April 2, 2026
 - Added sands.delete, sands.free, sands.undo commands
