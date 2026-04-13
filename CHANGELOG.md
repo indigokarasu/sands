@@ -1,3 +1,9 @@
+## [2.1.4] - 2026-04-12
+
+### Added
+- Briefing time window definitions: morning scope = today, evening scope = tomorrow (timeMin/timeMax)
+- OAuth staleness note: re-authenticate on auth error rather than suppressing
+
 ## [2026-04-04] Spec Compliance Update
 
 ### Changes

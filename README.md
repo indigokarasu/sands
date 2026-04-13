@@ -55,6 +55,9 @@ Sands treats your calendar as a structured scheduling surface. It reads across p
 
 ## Changelog
 
+### v2.1.4 — April 12, 2026
+- Define briefing time windows and add OAuth staleness handling note
+
 ### v1.2.0 -- April 2, 2026
 - Added background tasks for brief, conflict scan, travel check, and self-update
 - Added sands.init and sands.update commands

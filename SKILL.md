@@ -15,7 +15,7 @@ description: >
 metadata:
   author: Indigo Karasu
   email: mx.indigo.karasu@gmail.com
-  version: "2.1.3"
+  version: "2.1.4"
   hermes:
     tags: [calendar, scheduling, events]
     category: execution
@@ -128,6 +128,12 @@ Sands queries entity context from:
 - `sands.logistics.travel` — insert travel time block between events via Google Places API
 - `sands.briefing.generate` — generate structured schedule summary for Vesper emission
 - `sands.status` — skill health, configured calendars, API connectivity, current timezone
+
+### Briefing time windows
+Morning briefing (scope: today): `timeMin` = today 00:00 local, `timeMax` = tomorrow 00:00 local.
+Evening briefing (scope: tomorrow): `timeMin` = tomorrow 00:00 local, `timeMax` = day-after-tomorrow 00:00 local.
+
+OAuth tokens used for calendar access may become stale between cron runs. If a calendar query fails with an auth error, trigger re-authentication before retrying — do not suppress the error.
 - `sands.journal` — write journal for the current run; called at end of every run
 - `sands.update` — pull latest from GitHub source; preserves journals and data
 
