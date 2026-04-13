@@ -97,7 +97,20 @@ Sands manages calendar events through natural language — creating, querying, m
 - Sending meeting invitations or communications — use Dispatch
 
 
-## Responsibility boundary
+## Integrated: briefing-pipeline (Calendar & OAuth)
+
+### Calendar Queries
+For MORNING briefing (today): `timeMin` today 00:00, `timeMax` tomorrow 00:00.
+For EVENING briefing (tomorrow): `timeMin` tomorrow 00:00, `timeMax` day after tomorrow 00:00.
+Write Sands InsightProposal to: `~/.hermes/data/hermes-vesper/intake/prop_sands_{date}_{period}.json`.
+
+### OAuth and Token Issues
+Sands morning cron may run with stale OAuth tokens. Ensure re-auth with Drive scope is performed. Use `Credentials.from_authorized_user_file('/root/.hermes/google_token.json')` for read operations.
+
+### Account Isolation (CRITICAL)
+- **Jared's Google account**: `~/.hermes/google_token.json` (jared.zimmerman@gmail.com). Use for calendar queries, inbox scanning, contact data.
+- **Indigo's Google account**: `~/.hermes-indigo/google_token.json` (mx.indigo.karasu@gmail.com). Use for sending briefing emails FROM Indigo TO Jared.
+**Never read Jared's Calendar or Inbox from Indigo's token.**
 
 Sands owns calendar event management, conflict analysis, flexibility classification, travel time insertion via Google Places API, and emitting schedule signals to Vesper.
 
