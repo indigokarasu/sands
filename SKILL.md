@@ -21,19 +21,19 @@ metadata:
     category: execution
     cron:
       - name: "sands:morning-brief"
-        schedule: "0 6 * * *"
+        schedule: "5 13 * * *"
         command: "sands.briefing.generate"
       - name: "sands:evening-brief"
-        schedule: "0 20 * * *"
+        schedule: "0 3 * * *"
         command: "sands.briefing.generate"
       - name: "sands:conflict-scan"
-        schedule: "0 7 * * *"
+        schedule: "0 14 * * *"
         command: "sands.schedule.conflicts"
       - name: "sands:travel-check"
-        schedule: "0 7 * * *"
+        schedule: "0 14 * * *"
         command: "sands.logistics.travel"
       - name: "sands:update"
-        schedule: "0 0 * * *"
+        schedule: "20 7 * * *"
         command: "sands.update"
   openclaw:
     skill_type: system
@@ -57,19 +57,19 @@ metadata:
           required: true
     cron:
       - name: "sands:morning-brief"
-        schedule: "0 6 * * *"
+        schedule: "5 13 * * *"
         command: "sands.briefing.generate"
       - name: "sands:evening-brief"
-        schedule: "0 20 * * *"
+        schedule: "0 3 * * *"
         command: "sands.briefing.generate"
       - name: "sands:conflict-scan"
-        schedule: "0 7 * * *"
+        schedule: "0 14 * * *"
         command: "sands.schedule.conflicts"
       - name: "sands:travel-check"
-        schedule: "0 7 * * *"
+        schedule: "0 14 * * *"
         command: "sands.logistics.travel"
       - name: "sands:update"
-        schedule: "0 0 * * *"
+        schedule: "20 7 * * *"
         command: "sands.update"
 ---
 
