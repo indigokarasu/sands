@@ -77,7 +77,6 @@ metadata:
 
 Sands manages calendar events through natural language — creating, querying, modifying, and deleting events across personal and work calendars. It detects scheduling conflicts with flexibility classification, finds free time slots, inserts travel time blocks via Google Places API, and emits structured schedule briefs to Vesper for morning and evening briefings.
 
-
 ## When to use
 
 - View, query, create, modify, or delete calendar events
@@ -87,7 +86,6 @@ Sands manages calendar events through natural language — creating, querying, m
 - Generate schedule briefs for Vesper briefings
 - Undo a recent calendar action
 
-
 ## When not to use
 
 - Reminders not tied to calendar events
@@ -96,13 +94,11 @@ Sands manages calendar events through natural language — creating, querying, m
 - Booking travel reservations — use Voyage
 - Sending meeting invitations or communications — use Dispatch
 
-
 ## Responsibility boundary
 
 Sands owns calendar event management, conflict analysis, flexibility classification, travel time insertion via Google Places API, and emitting schedule signals to Vesper.
 
 Sands does not own: communications (Dispatch), travel reservations (Voyage), general research (Sift), entity knowledge (Elephas/Weave).
-
 
 ## Ontology types
 
@@ -114,7 +110,6 @@ Sands works with these types from `spec-ocas-ontology.md`:
 Sands queries entity context from:
 - **Weave** (read-only) — attendee identity resolution during conflict classification
 - **Elephas / Chronicle** — current location context for travel departure resolution
-
 
 ## Commands
 
@@ -137,7 +132,6 @@ OAuth tokens used for calendar access may become stale between cron runs. If a c
 - `sands.journal` — write journal for the current run; called at end of every run
 - `sands.update` — pull latest from GitHub source; preserves journals and data
 
-
 ## Run completion
 
 After every Sands command:
@@ -145,7 +139,6 @@ After every Sands command:
 1. Persist event interactions to `events.jsonl` (event_id, calendar_id, title, start, end, action, recurrence_scope, previous_values)
 2. Log material decisions (conflict resolutions, travel insertions) to `decisions.jsonl`
 3. Write journal via `sands.journal` — Observation Journal for query/free/conflicts/status, Action Journal for create/modify/delete/travel/brief/undo
-
 
 ## Hard boundaries
 
@@ -155,7 +148,6 @@ After every Sands command:
 - Never use a hardcoded home address or assume a fixed city for travel departure
 - Never silently fall back to distance heuristics if Google Places API is unavailable — surface warning and ask for manual estimate
 - Undo window is 24 hours; recurring event scope changes cannot be undone
-
 
 ## Storage layout
 
@@ -188,7 +180,6 @@ Default config.json:
 }
 ```
 
-
 ## OKRs
 
 Universal OKRs from spec-ocas-journal.md apply to all runs.
@@ -212,7 +203,6 @@ skill_okrs:
     evaluation_window: 30_runs
 ```
 
-
 ## Optional skill cooperation
 
 - Weave — attendee identity resolution and current location context
@@ -220,12 +210,10 @@ skill_okrs:
 - Voyage — travel reservations detected in calendar surfaced for Voyage to manage
 - Vesper — Vesper reads Sands schedule briefs at journal payload fields (see interfaces specification) during briefing generation (cooperative write; Sands pushes to Vesper (via journal briefing payload))
 
-
 ## Journal outputs
 
 - Observation Journal — sands.calendar.query, sands.schedule.free, sands.schedule.conflicts, sands.status
 - Action Journal — sands.event.create, sands.event.modify, sands.event.delete, sands.event.undo, sands.logistics.travel, sands.briefing.generate
-
 
 ## Initialization
 
@@ -237,7 +225,6 @@ On first invocation of any Sands command, run `sands.init`:
 4. Create `{agent_root}/commons/journals/ocas-sands/`
 5. Register cron jobs listed below if not already present (check the platform scheduling registry first)
 6. Log initialization as a DecisionRecord in `decisions.jsonl`
-
 
 ## Background tasks
 
@@ -267,7 +254,6 @@ Registration during `sands.init`:
 # Task declared in SKILL.md frontmatter metadata.{platform}.cron
 ```
 
-
 ## Self-update
 
 `sands.update` pulls the latest package from the `source:` URL in this file's frontmatter. Runs silently — no output unless the version changed or an error occurred.
@@ -288,11 +274,9 @@ Registration during `sands.init`:
 6. On failure → retry once. If second attempt fails, report the error and stop.
 7. Output exactly: `I updated Sands from version {old} to {new}`
 
-
 ## Visibility
 
 public
-
 
 ## Support file map
 
@@ -316,7 +300,6 @@ sands.update
 ```
 
 This pulls the latest version from GitHub and restarts the skill's background tasks if applicable.
-
 
 ---
 
@@ -426,4 +409,3 @@ After running, persist to:
 - **Timezone**: America/Los_Angeles (PDT, UTC-7) — matches config.json default
 - **Lookahead**: 7 days from today 00:00 local
 - **Google Places API**: not configured in current setup — skip travel time checks
-
