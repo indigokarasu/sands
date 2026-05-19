@@ -338,15 +338,15 @@ CLI is not installed but Google Calendar API tokens are available.
 Test these tokens in order until one works:
 
 ```
-<hermes-root>/google_token.json          ← has full calendar scope, most recent
-<hermes-root>/owner_google_token.json
-<hermes-root>/indigo_google_token.json
-<hermes-root>/2026-04-06_21-34-18/google_token.json
+{agent_root}/google_token.json          ← has full calendar scope, most recent
+{agent_root}/owner_google_token.json
+{agent_root}/indigo_google_token.json
+{agent_root}/2026-04-06_21-34-18/google_token.json
 <hermes-root>-indigo/google_token.json
 <hermes-root>-indigo/indigo_google_token.json
 ```
 
-Only `<hermes-root>/google_token.json` had working calendar scope as of Apr 2026.
+Only `{agent_root}/google_token.json` had working calendar scope as of Apr 2026.
 Others had Gmail/drive scopes but were expired or lacked calendar permission.
 
 ## Token Refresh Pattern
