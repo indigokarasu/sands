@@ -15,7 +15,7 @@ description: >
 metadata:
   author: Indigo Karasu
   email: mx.indigo.karasu@gmail.com
-  version: "2.1.4"
+  version: "2.1.5"
   hermes:
     tags: [calendar, scheduling, events]
     category: execution
@@ -69,7 +69,7 @@ metadata:
         schedule: "0 14 * * *"
         command: "sands.logistics.travel"
       - name: "sands:update"
-        schedule: "20 7 * * *"
+        schedule: "0 0 * * *"
         command: "sands.update"
 ---
 
@@ -283,6 +283,7 @@ public
 | File | When to read |
 |---|---|
 | `references/calendar_config.md` | Before configuring calendars, timezone handling, or Google Places API |
+| `references/google_calendar_api_quirks.md` | Before `manage_event` calls; explains required fields and query range semantics |
 | `references/duration_defaults.md` | Before `sands.event.create`; explains smart duration defaults |
 | `references/flexibility_rules.md` | Before `sands.schedule.conflicts`; explains FIXED/FLEXIBLE/AMBIGUOUS classification |
 | `references/conflict_detection.md` | Before conflict analysis; explains detection rules and validation |
