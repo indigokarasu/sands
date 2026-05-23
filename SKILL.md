@@ -149,6 +149,15 @@ After every Sands command:
 - Never silently fall back to distance heuristics if Google Places API is unavailable — surface warning and ask for manual estimate
 - Undo window is 24 hours; recurring event scope changes cannot be undone
 
+## Recovery Behavior
+
+This skill implements the recovery contract from `spec-ocas-recovery.md`.
+
+- **Evidence**: Every scheduled run writes an evidence record to `{agent_root}/commons/data/ocas-sands/evidence.jsonl`, including no-op runs. The `not_activity_reason` field is mandatory when no side effects occur.
+- **Gap detection**: On every wake, checks the evidence log. If gap exceeds cadence (24h for briefs, 24h for conflict-scan), logs `gap_detected`.
+- **Degraded mode**: When Google Calendar API or Google Places API fail, logs `degraded: <api>` and continues with available data.
+- **Log compaction**: Evidence and decision logs older than 30 days (no-op) or 90 days (error/gap) compacted. Last 7 days retained.
+
 ## Storage layout
 
 ```
@@ -156,6 +165,8 @@ After every Sands command:
   config.json
   decisions.jsonl
   events.jsonl
+  evidence.jsonl
+  intents.jsonl
 {agent_root}/commons/journals/ocas-sands/
   YYYY-MM-DD/{run_id}.json
 ```
@@ -201,6 +212,16 @@ skill_okrs:
     direction: maximize
     target: 0.98
     evaluation_window: 30_runs
+  - name: schedule_adherence
+    metric: fraction of cron-scheduled runs that execute within 5 minutes of their scheduled time
+    direction: maximize
+    target: 0.95
+    evaluation_window: 30_runs
+  - name: data_integrity
+    metric: fraction of runs where evidence.jsonl and events.jsonl records are consistent (no orphaned or missing entries)
+    direction: maximize
+    target: 0.99
+    evaluation_window: 30_runs
 ```
 
 ## Optional skill cooperation
@@ -221,7 +242,7 @@ On first invocation of any Sands command, run `sands.init`:
 
 1. Create `{agent_root}/commons/data/ocas-sands/` directory
 2. Write default `config.json` with ConfigBase fields if absent
-3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`
+3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`, `evidence.jsonl`, `intents.jsonl`
 4. Create `{agent_root}/commons/journals/ocas-sands/`
 5. Register cron jobs listed below if not already present (check the platform scheduling registry first)
 6. Log initialization as a DecisionRecord in `decisions.jsonl`
@@ -304,13 +325,6 @@ This pulls the latest version from GitHub and restarts the skill's background ta
 
 ---
 
-## Integrated: sands-cli-workaround
-
-# Sands CLI Workaround
-
-Run `sands.schedule.conflicts` (or similar calendar query) when the `sands`
-CLI is not installed but Google Calendar API tokens are available.
-
 ## When to Use
 
 - `sands` command not found in PATH
@@ -322,16 +336,11 @@ CLI is not installed but Google Calendar API tokens are available.
 Test these tokens in order until one works:
 
 ```
-{agent_root}/google_token.json          ← has full calendar scope, most recent
-{agent_root}/owner_google_token.json
-{agent_root}/indigo_google_token.json
-{agent_root}/2026-04-06_21-34-18/google_token.json
-<hermes-root>-indigo/google_token.json
-<hermes-root>-indigo/indigo_google_token.json
+/root/.google_workspace_mcp/credentials/google-workspace-user.json          ← has full calendar scope
+/root/.google_workspace_mcp/credentials/contact@example.com        ← fallback
 ```
 
-Only `{agent_root}/google_token.json` had working calendar scope as of Apr 2026.
-Others had Gmail/drive scopes but were expired or lacked calendar permission.
+These use the central `google_auth` helper which auto-refreshes.
 
 ## Token Refresh Pattern
 
@@ -402,6 +411,8 @@ After running, persist to:
 ```
 /root/commons/data/ocas-sands/decisions.jsonl   ← material decisions
 /root/commons/data/ocas-sands/events.jsonl      ← event interactions
+/root/commons/data/ocas-sands/evidence.jsonl    ← evidence records (recovery contract)
+/root/commons/data/ocas-sands/intents.jsonl     ← scheduled run intentions
 /root/commons/journals/ocas-sands/YYYY-MM-DD/{run_id}.json  ← journal
 ```
 
