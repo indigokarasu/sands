@@ -1,76 +1,21 @@
 ---
 name: ocas-sands
-description: >
-  Calendar management skill. Use when the user wants to view, query, create,
-  modify, delete, or analyze their calendar events. Handles natural-language
-  scheduling, conflict detection with flexibility classification, free slot
-  finding, automatic travel time event insertion between consecutive
-  appointments using Google Places API, recurring event management, and daily
-  schedule briefings for Vesper. Trigger phrases: 'what\'s on my calendar',
-  'schedule a meeting', 'am I free', 'when am I free for an hour', 'cancel my
-  dentist', 'add travel time', 'any conflicts this week', 'what do I need to
-  prepare for tomorrow', 'undo that', 'update sands'. Do not use for reminders
-  without calendar context, task management, or general time/timezone
-  questions.
+description: 'Calendar management skill. Use when the user wants to view, query, create,
+  modify, delete, or analyze their calendar events. Handles natural-language scheduling,
+  conflict detection with flexibility classification, free slot finding, automatic
+  travel time event insertion between consecutive appointments using Google Places
+  API, recurring event management, and daily schedule briefings for Vesper. Trigger
+  phrases: ''what\''s on my calendar'', ''schedule a meeting'', ''am I free'', ''when
+  am I free for an hour'', ''cancel my dentist'', ''add travel time'', ''any conflicts
+  this week'', ''what do I need to prepare for tomorrow'', ''undo that'', ''update
+  sands''. Do not use for reminders without calendar context, task management, or
+  general time/timezone questions.
+
+  '
+license: MIT
 metadata:
   author: Indigo Karasu
-  email: mx.indigo.karasu@gmail.com
-  version: "2.1.5"
-  hermes:
-    tags: [calendar, scheduling, events]
-    category: execution
-    cron:
-      - name: "sands:morning-brief"
-        schedule: "5 13 * * *"
-        command: "sands.briefing.generate"
-      - name: "sands:evening-brief"
-        schedule: "0 3 * * *"
-        command: "sands.briefing.generate"
-      - name: "sands:conflict-scan"
-        schedule: "0 14 * * *"
-        command: "sands.schedule.conflicts"
-      - name: "sands:travel-check"
-        schedule: "0 14 * * *"
-        command: "sands.logistics.travel"
-      - name: "sands:update"
-        schedule: "20 7 * * *"
-        command: "sands.update"
-  openclaw:
-    skill_type: system
-    visibility: public
-    filesystem:
-      read:
-        - "{agent_root}/commons/data/ocas-sands/"
-        - "{agent_root}/commons/journals/ocas-sands/"
-      write:
-        - "{agent_root}/commons/data/ocas-sands/"
-        - "{agent_root}/commons/journals/ocas-sands/"
-    self_update:
-      source: "https://github.com/indigokarasu/sands"
-      mechanism: "version-checked tarball from GitHub via gh CLI"
-      command: "sands.update"
-      requires_binaries: [gh, tar, python3]
-    requires:
-      credentials:
-        - name: "GOOGLE_PLACES_API_KEY"
-          description: "Google Places API key for travel time calculations"
-          required: true
-    cron:
-      - name: "sands:morning-brief"
-        schedule: "5 13 * * *"
-        command: "sands.briefing.generate"
-      - name: "sands:evening-brief"
-        schedule: "0 3 * * *"
-        command: "sands.briefing.generate"
-      - name: "sands:conflict-scan"
-        schedule: "0 14 * * *"
-        command: "sands.schedule.conflicts"
-      - name: "sands:travel-check"
-        schedule: "0 14 * * *"
-        command: "sands.logistics.travel"
-      - name: "sands:update"
-        schedule: "0 0 * * *"
-        command: "sands.update"
+  version: 2.1.5
 ---
 
 # Sands
