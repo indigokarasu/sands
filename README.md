@@ -1,80 +1,77 @@
 # 🏜️ Sands
 
-Sands manages calendar events through natural language -- creating, querying, modifying, and deleting events across personal and work calendars. It detects scheduling conflicts with flexibility classification, finds free time slots, inserts travel time blocks via Google Places API, and emits structured schedule briefs to Vesper for morning and evening briefings.
+> **Natural-language calendar management across multiple calendars.**
 
+## Why Sands?
 
-Skill packages follow the [agentskills.io](https://agentskills.io/specification) open standard and are compatible with OpenClaw, Hermes Agent, and any agentskills.io-compliant client.
+Managing a calendar shouldn't require clicking through five menus or remembering API syntax. Sands lets you talk to your calendar the way you'd talk to a person — "move my 2pm to tomorrow," "what does my afternoon look like," "find me 30 minutes before my next meeting." It handles multi-calendar conflict detection, travel time blocks, and recurring events so you don't have to.
 
----
+Skill packages follow the [agentskills.io](https://agentskills.io/specification) open standard and are compatible with OpenClaw, Hermes Agent, Claude, and any agentskills.io-compliant client.
 
-## Overview
+## Quick Start
 
-Sands treats your calendar as a structured scheduling surface. It reads across personal and work calendars (work events shown only as busy blocks, titles suppressed), resolves natural-language time references to precise ISO 8601 ranges, and handles recurring events with scope control. Travel time blocks are computed via Google Places Distance Matrix API with mode-aware routing (driving, transit, walking, bicycling). Every calendar action is logged to events.jsonl with undo support within 24 hours.
+```
+# Ask about your schedule
+"What does my afternoon look like?"
+
+# Create an event
+"Schedule a meeting with Alex tomorrow at 2pm"
+
+# Find free time
+"When am I free for a 30-minute call this week?"
+```
+
+Sands auto-initializes on first use. No manual setup required beyond configuring calendar IDs.
+
+## What It Does
+
+Sands treats your calendar as a structured scheduling surface. It reads across personal and work calendars (work events shown only as busy blocks, titles suppressed), resolves natural-language time references to precise ISO 8601 ranges, and handles recurring events with scope control. Travel time blocks are computed via Google Places Distance Matrix API. Every action is logged with undo support within 24 hours.
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `sands.query` | Pull events for a time window (today, this week, a specific date) |
-| `sands.create` | Create a new event from natural language with conflict pre-check |
-| `sands.modify` | Update an existing event with post-modify conflict re-check |
-| `sands.delete` | Cancel and remove an event with travel block cleanup |
-| `sands.free` | Find available time slots for a given duration |
-| `sands.conflicts` | Analyze upcoming schedule for conflicts with flexibility classification |
-| `sands.travel` | Insert travel time block between events via Google Places API |
-| `sands.brief` | Generate structured schedule summary for Vesper briefings |
-| `sands.undo` | Revert the most recent calendar action (within 24 hours) |
-| `sands.status` | Skill health and configuration summary |
-| `sands.update` | Pull latest from GitHub source (preserves journals and data) |
-
-## Setup
-
-`sands.init` runs automatically on first invocation and creates all required directories, config.json, JSONL files, and registers background tasks. No manual setup is required beyond configuring calendar IDs and Google Places API key in config.json.
+| `sands.query` | Pull events for a time window |
+| `sands.create` | Create a new event with conflict pre-check |
+| `sands.modify` | Update an existing event |
+| `sands.delete` | Cancel and remove an event |
+| `sands.free` | Find available time slots |
+| `sands.conflicts` | Analyze schedule for conflicts |
+| `sands.travel` | Insert travel time blocks |
+| `sands.brief` | Generate schedule summary for Vesper |
+| `sands.undo` | Revert the most recent action (24h) |
+| `sands.status` | Skill health and configuration |
+| `sands.update` | Self-update from GitHub source |
 
 ## Dependencies
 
-**OCAS Skills**
-- [Weave](https://github.com/indigokarasu/weave) -- attendee identity resolution and current location context
-- [Elephas](https://github.com/indigokarasu/elephas) -- current location context from Chronicle
-- [Vesper](https://github.com/indigokarasu/vesper) -- consumes Sands schedule briefs for morning/evening briefings
-- [Voyage](https://github.com/indigokarasu/voyage) -- travel reservations detected in calendar are surfaced for Voyage
-
-**External**
-- Google Calendar API (read/write for personal calendars, read-only for work calendar)
-- Google Places API (location resolution and travel time calculation)
+- [Weave](https://github.com/indigokarasu/weave) — attendee identity resolution
+- [Elephas](https://github.com/indigokarasu/elephas) — current location context
+- [Vesper](https://github.com/indigokarasu/vesper) — consumes schedule briefs
+- [Voyage](https://github.com/indigokarasu/voyage) — travel reservations surfaced to Voyage
+- Google Calendar API, Google Places API
 
 ## Scheduled Tasks
 
-| Job | Schedule | Command | Purpose |
-|---|---|---|---|
-| `sands:morning-brief` | `0 6 * * *` | `sands.brief` | Today's schedule brief for Vesper morning briefing |
-| `sands:evening-brief` | `0 20 * * *` | `sands.brief` | Tomorrow's schedule brief for Vesper evening briefing |
-| `sands:conflict-scan` | `0 7 * * *` | `sands.conflicts` | Daily conflict scan for upcoming 7 days |
-| `sands:travel-check` | `0 7 * * *` | `sands.travel` | Check next day's events for missing travel blocks |
-| `sands:update` | `0 0 * * *` | `sands.update` | Self-update from GitHub source |
+| Job | Schedule | Purpose |
+|---|---|---|
+| `sands:morning-brief` | `0 6 * * *` | Today's schedule for Vesper |
+| `sands:evening-brief` | `0 20 * * *` | Tomorrow's schedule for Vesper |
+| `sands:conflict-scan` | `0 7 * * *` | Daily conflict scan |
+| `sands:travel-check` | `0 7 * * *` | Check for missing travel blocks |
+| `sands:update` | `0 0 * * *` | Self-update |
 
 ## Changelog
 
 ### v2.1.4 — April 12, 2026
-- Define briefing time windows and add OAuth staleness handling note
+- Briefing time windows, OAuth staleness handling
 
-### v1.2.0 -- April 2, 2026
-- Added background tasks for brief, conflict scan, travel check, and self-update
-- Added sands.init and sands.update commands
-- Fixed missing scheduled_tasks in SKILL.md frontmatter
+### v1.2.0 — April 2, 2026
+- Background tasks, sands.init and sands.update
 
-### v1.1.0 -- April 2, 2026
-- Added sands.delete, sands.free, sands.undo commands
-- Timezone awareness with dual-timezone display
-- Recurring event handling with scope control
-- Multi-mode travel (driving, transit, walking, bicycling)
-- Smart duration defaults, attendee management, morning brief day-at-a-glance
-
-### v1.0.0 -- March 31, 2026
-- Initial release: query, create, modify, conflicts, travel, brief, status
-- Work calendar busy overlay, Google Places integration, conflict classification
-- Preparation signal detection, journal output for every command
+### v1.0.0 — March 31, 2026
+- Initial release
 
 ---
 
-*Sands is part of the [OCAS Agent Suite](https://github.com/indigokarasu) -- a collection of interconnected skills for personal intelligence, autonomous research, and continuous self-improvement. Each skill owns a narrow responsibility and communicates with others through structured signal files, shared journals, and Chronicle, a long-term knowledge graph that accumulates verified facts over time.*
+*Sands is part of the [OCAS Agent Suite](https://github.com/indigokarasu).*
