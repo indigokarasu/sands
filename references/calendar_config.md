@@ -30,4 +30,6 @@ Sands uses Google Places API for all travel time calculations:
 - **Places Search / Find Place** — resolve a location string to a place ID and coordinates
 - **Distance Matrix API** — get travel time between two coordinates (driving, transit, walking, bicycling)
 
+For API key configuration and OAuth token details, see `references/credential-files.md`.
+
 Fallback (API unavailable): surface a warning and ask the user to confirm an estimated travel time manually. Do not silently use a distance heuristic.

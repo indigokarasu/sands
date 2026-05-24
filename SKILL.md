@@ -85,6 +85,8 @@ After every Sands command:
 2. Log material decisions (conflict resolutions, travel insertions) to `decisions.jsonl`
 3. Write journal via `sands.journal` — Observation Journal for query/free/conflicts/status, Action Journal for create/modify/delete/travel/brief/undo
 
+**Post-mutation verification**: After any create/modify/delete command, re-query the calendar for the affected event ID and confirm the change is reflected (correct title, time, calendar placement, or removal). If the event state does not match what was requested, log a `calendar_mismatch` entry in `evidence.jsonl` and alert the user — never silently assume the write succeeded.
+
 ## Hard boundaries
 
 - Never write to `work_calendar_id` — read/overlay as busy blocks only
@@ -105,16 +107,7 @@ This skill implements the recovery contract from `spec-ocas-recovery.md`.
 
 ## Storage layout
 
-```
-{agent_root}/commons/data/ocas-sands/
-  config.json
-  decisions.jsonl
-  events.jsonl
-  evidence.jsonl
-  intents.jsonl
-{agent_root}/commons/journals/ocas-sands/
-  YYYY-MM-DD/{run_id}.json
-```
+See `references/schemas.md` for the storage layout.
 
 Default config.json:
 ```json
@@ -141,34 +134,7 @@ See `references/credential-files.md` for Google Places API key and OAuth token d
 
 Universal OKRs from spec-ocas-journal.md apply to all runs.
 
-```yaml
-skill_okrs:
-  - name: conflict_detection_accuracy
-    metric: fraction of actual conflicts correctly identified and surfaced
-    direction: maximize
-    target: 0.95
-    evaluation_window: 30_runs
-  - name: travel_time_api_success_rate
-    metric: fraction of sands.logistics.travel runs completing via Google Places API
-    direction: maximize
-    target: 0.90
-    evaluation_window: 30_runs
-  - name: calendar_write_success_rate
-    metric: fraction of create/modify runs with no calendar API error
-    direction: maximize
-    target: 0.98
-    evaluation_window: 30_runs
-  - name: schedule_adherence
-    metric: fraction of cron-scheduled runs that execute within 5 minutes of their scheduled time
-    direction: maximize
-    target: 0.95
-    evaluation_window: 30_runs
-  - name: data_integrity
-    metric: fraction of runs where evidence.jsonl and events.jsonl records are consistent (no orphaned or missing entries)
-    direction: maximize
-    target: 0.99
-    evaluation_window: 30_runs
-```
+See `references/schemas.md` for details.
 
 ## Optional skill cooperation
 
@@ -230,14 +196,7 @@ Registration during `sands.init`:
 3. Fetch remote version from SKILL.md frontmatter: `gh api "repos/{owner}/{repo}/contents/SKILL.md" --jq '.content' | base64 -d | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/'`
 4. If remote version equals local version → stop silently
 5. Download and install:
-   ```bash
-   TMPDIR=$(mktemp -d)
-   gh api "repos/{owner}/{repo}/tarball/main" > "$TMPDIR/archive.tar.gz"
-   mkdir "$TMPDIR/extracted"
-   tar xzf "$TMPDIR/archive.tar.gz" -C "$TMPDIR/extracted" --strip-components=1
-   cp -R "$TMPDIR/extracted/"* ./
-   rm -rf "$TMPDIR"
-   ```
+See `references/okrs.md` for OKR definitions.
 6. On failure → retry once. If second attempt fails, report the error and stop.
 7. Output exactly: `I updated Sands from version {old} to {new}`
 
