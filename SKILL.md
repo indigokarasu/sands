@@ -126,7 +126,6 @@ Default config.json:
   "updated_at": "",
   "primary_calendar_ids": ["primary"],
   "work_calendar_id": "",
-  "google_places_api_key": "",
   "travel_buffer_minutes": 10,
   "default_travel_mode": "driving",
   "conflict_lookahead_days": 7,
@@ -135,6 +134,8 @@ Default config.json:
   "retention": { "days": 90, "max_records": 10000 }
 }
 ```
+
+See `references/credential-files.md` for Google Places API key and OAuth token details.
 
 ## OKRs
 
@@ -244,19 +245,27 @@ Registration during `sands.init`:
 
 public
 
+## Gotchas
+
+- **Work calendar is read-only** — Sands can overlay work calendar busy blocks but must never write to `work_calendar_id`. Writing to a read-only calendar will fail silently or produce API errors.
+- **All-day events don't conflict with timed events** — Per the hard boundary, all-day events are excluded from conflict detection with timed events unless the user explicitly asks. This can hide real scheduling issues if the user expects otherwise.
+- **Google Places API failure is surfaced, not silently handled** — If the Google Places API is unavailable, Sands does NOT fall back to distance heuristics. It surfaces a warning and asks for a manual estimate.
+- **Undo window is 24 hours and non-recurring** — Event undo is only available within 24 hours of the original action. Recurring event scope changes cannot be undone at all.
+- **OAuth tokens may stale between cron runs** — Calendar queries can fail with auth errors if the OAuth token expires between scheduled runs. Always trigger re-authentication before retrying; do not suppress the error.
+
 ## Support file map
 
 | File | When to read |
-|---|---|
-| `references/calendar_config.md` | Before configuring calendars, timezone handling, or Google Places API |
-| `references/google_calendar_api_quirks.md` | Before `manage_event` calls; explains required fields and query range semantics |
-| `references/duration_defaults.md` | Before `sands.event.create`; explains smart duration defaults |
-| `references/flexibility_rules.md` | Before `sands.schedule.conflicts`; explains FIXED/FLEXIBLE/AMBIGUOUS classification |
-| `references/conflict_detection.md` | Before conflict analysis; explains detection rules and validation |
-| `references/recurring_events.md` | Before creating/modifying/deleting recurring events; explains scope handling |
-| `references/preparation_signals.md` | Before `sands.briefing.generate`; explains prep signal detection |
-| `references/travel_time_logic.md` | Before `sands.logistics.travel`; explains departure resolution and mode inference |
-| `references/vesper_emit_format.md` | Before `sands.briefing.generate`; explains InsightProposal payload schema |
+|------|-------------|
+| `references/calendar_config.md` | Before configuring calendars, timezone handling, or Google Places API; when setting up skill |
+| `references/google_calendar_api_quirks.md` | Before manage_event calls; when checking required fields and query range semantics |
+| `references/duration_defaults.md` | Before sands.event.create; when applying smart duration defaults |
+| `references/flexibility_rules.md` | Before sands.schedule.conflicts; when classifying events as FIXED/FLEXIBLE/AMBIGUOUS |
+| `references/conflict_detection.md` | Before conflict analysis; when running detection rules and validation |
+| `references/recurring_events.md` | Before creating, modifying, or deleting recurring events; when handling scope |
+| `references/preparation_signals.md` | Before sands.briefing.generate; when detecting prep signals from events |
+| `references/travel_time_logic.md` | Before sands.logistics.travel; when resolving departure location and travel mode |
+| `references/vesper_emit_format.md` | Before sands.briefing.generate; when formatting InsightProposal payload for Vesper |
 
 ## Update command
 
@@ -268,101 +277,3 @@ sands.update
 
 This pulls the latest version from GitHub and restarts the skill's background tasks if applicable.
 
----
-
-## When to Use
-
-- `sands` command not found in PATH
-- `ocas-sands` data directory exists but skill's CLI isn't accessible
-- Need to run a Sands command as a cron job without the full Sands installation
-
-## Token Discovery Order
-
-Test these tokens in order until one works:
-
-```
-/root/.google_workspace_mcp/credentials/google-workspace-user.json          ← has full calendar scope
-/root/.google_workspace_mcp/credentials/contact@example.com        ← fallback
-```
-
-These use the central `google_auth` helper which auto-refreshes.
-
-## Token Refresh Pattern
-
-```python
-import json, urllib.request, urllib.parse
-
-with open(token_path) as f:
-    data = json.load(f)
-
-refresh_data = urllib.parse.urlencode({
-    'client_id': data['client_id'],
-    'client_secret': data['client_secret'],
-    'refresh_token': data['refresh_token'],
-    'grant_type': 'refresh_token'
-}).encode()
-
-req = urllib.request.Request(data['token_uri'], data=refresh_data, method='POST')
-with urllib.request.urlopen(req, timeout=30) as resp:
-    access_token = json.loads(resp.read())['access_token']
-```
-
-## Calendar Query Pattern
-
-```python
-calendar_url = (
-    f"https://www.googleapis.com/calendar/v3/calendars/primary/events"
-    f"?timeMin={urllib.parse.quote(time_min.isoformat())}"
-    f"&timeMax={urllib.parse.quote(time_max.isoformat())}"
-    f"&singleEvents=true&orderBy=startTime"
-)
-
-req = urllib.request.Request(calendar_url)
-req.add_header('Authorization', f'Bearer {access_token}')
-
-with urllib.request.urlopen(req, timeout=30) as resp:
-    events = json.loads(resp.read()).get('items', [])
-```
-
-## Conflict Detection Rules (from ocas-sands references)
-
-A conflict exists when:
-- Two timed events overlap by any amount, OR
-- Travel time to an event would need to begin before preceding event ends
-
-All-day events do NOT conflict with timed events (per Sands spec).
-
-Flexibility classification keywords:
-
-**FIXED** — title contains: call, meeting, interview, sync, standup, review,
-appointment, doctor, dentist, flight, train, reservation, class, course,
-workshop, concert, show, game, lesson; OR has external attendees,
-conference link, or is recurring.
-
-**FLEXIBLE** — title contains: gym, workout, run, walk, errand, personal,
-reading, focus time, deep work, solo lunch, groceries; no external
-attendees, no conference link.
-
-**AMBIGUOUS** — everything else.
-
-## Required References (load from ocas-sands)
-
-- `references/conflict_detection.md` — detection rules
-- `references/flexibility_rules.md` — classification logic
-
-## Output Files to Update
-
-After running, persist to:
-```
-/root/commons/data/ocas-sands/decisions.jsonl   ← material decisions
-/root/commons/data/ocas-sands/events.jsonl      ← event interactions
-/root/commons/data/ocas-sands/evidence.jsonl    ← evidence records (recovery contract)
-/root/commons/data/ocas-sands/intents.jsonl     ← scheduled run intentions
-/root/commons/journals/ocas-sands/YYYY-MM-DD/{run_id}.json  ← journal
-```
-
-## Hardcoded Assumptions
-
-- **Timezone**: America/Los_Angeles (PDT, UTC-7) — matches config.json default
-- **Lookahead**: 7 days from today 00:00 local
-- **Google Places API**: not configured in current setup — skip travel time checks
