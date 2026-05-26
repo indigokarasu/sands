@@ -13,10 +13,78 @@ description: 'Calendar management skill. Use when the user wants to view, query,
 
   '
 license: MIT
+includes:
+  - references/**
+  - evals/**
+  - scripts/**
+
 metadata:
   author: Indigo Karasu
   version: 2.1.5
+  hermes:
+    tags: [calendar, scheduling, logistics]
+    category: signal
+    cron:
+      - name: "sands:morning-brief"
+        schedule: "0 6 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:evening-brief"
+        schedule: "0 20 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:conflict-scan"
+        schedule: "0 7 * * *"
+        command: "sands.schedule.conflicts"
+      - name: "sands:travel-check"
+        schedule: "0 7 * * *"
+        command: "sands.logistics.travel"
+      - name: "sands:update"
+        schedule: "0 0 * * *"
+        command: "sands.update"
+  openclaw:
+    skill_type: system
+    visibility: public
+    filesystem:
+      read:
+        - "{agent_root}/commons/data/ocas-sands/"
+        - "{agent_root}/commons/journals/ocas-sands/"
+      write:
+        - "{agent_root}/commons/data/ocas-sands/"
+        - "{agent_root}/commons/journals/ocas-sands/"
+    self_update:
+      source: "https://github.com/indigokarasu/sands"
+      mechanism: "version-checked tarball from GitHub via gh CLI"
+      command: "sands.update"
+      requires_binaries: [gh, tar]
+    cron:
+      - name: "sands:morning-brief"
+        schedule: "0 6 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:evening-brief"
+        schedule: "0 20 * * *"
+        command: "sands.briefing.generate"
+      - name: "sands:conflict-scan"
+        schedule: "0 7 * * *"
+        command: "sands.schedule.conflicts"
+      - name: "sands:travel-check"
+        schedule: "0 7 * * *"
+        command: "sands.logistics.travel"
+      - name: "sands:update"
+        schedule: "0 0 * * *"
+        command: "sands.update"
 ---
+## When to Use
+
+- Calendar event creation, modification, and deletion
+- Multi-calendar coordination (Personal, Shannon, Family)
+- Appointment scheduling with conflict detection
+- Focus time and out-of-office management
+- When any skill needs calendar operations
+## When NOT to Use
+
+- Email or message sending (use Dispatch)
+- Content generation or research
+- Booking non-calendar appointments (use Spot)
+- Travel planning (use Voyage)
 
 # Sands
 
@@ -68,14 +136,11 @@ Sands queries entity context from:
 - `sands.logistics.travel` — insert travel time block between events via Google Places API
 - `sands.briefing.generate` — generate structured schedule summary for Vesper emission
 - `sands.status` — skill health, configured calendars, API connectivity, current timezone
-
-### Briefing time windows
-Morning briefing (scope: today): `timeMin` = today 00:00 local, `timeMax` = tomorrow 00:00 local.
-Evening briefing (scope: tomorrow): `timeMin` = tomorrow 00:00 local, `timeMax` = day-after-tomorrow 00:00 local.
-
-OAuth tokens used for calendar access may become stale between cron runs. If a calendar query fails with an auth error, trigger re-authentication before retrying — do not suppress the error.
 - `sands.journal` — write journal for the current run; called at end of every run
 - `sands.update` — pull latest from GitHub source; preserves journals and data
+
+See `references/briefing_windows.md` for morning/evening briefing time window definitions.
+See `references/credential-files.md` for Google Places API key and OAuth token details, including token staleness handling.
 
 ## Run completion
 
@@ -107,34 +172,11 @@ This skill implements the recovery contract from `spec-ocas-recovery.md`.
 
 ## Storage layout
 
-See `references/schemas.md` for the storage layout.
-
-Default config.json:
-```json
-{
-  "skill_id": "ocas-sands",
-  "skill_version": "2.0.0",
-  "config_version": "2",
-  "created_at": "",
-  "updated_at": "",
-  "primary_calendar_ids": ["primary"],
-  "work_calendar_id": "",
-  "travel_buffer_minutes": 10,
-  "default_travel_mode": "driving",
-  "conflict_lookahead_days": 7,
-  "default_timezone": "America/Los_Angeles",
-  "working_hours": { "start": "09:00", "end": "18:00" },
-  "retention": { "days": 90, "max_records": 10000 }
-}
-```
-
-See `references/credential-files.md` for Google Places API key and OAuth token details.
+See `references/schemas.md` for the full storage layout and default config.json.
 
 ## OKRs
 
-Universal OKRs from spec-ocas-journal.md apply to all runs.
-
-See `references/schemas.md` for details.
+Universal OKRs from spec-ocas-journal.md apply to all runs. See `references/okrs.md` for details.
 
 ## Optional skill cooperation
 
@@ -174,18 +216,7 @@ Registered during `sands.init`. Always check existing jobs before registering:
 All cron jobs use: `--session isolated --light-context --tz America/Los_Angeles`.
 
 Registration during `sands.init`:
-```
-# Check platform scheduling registry for existing tasks
-# Task declared in SKILL.md frontmatter metadata.{platform}.cron
-# If sands:evening-brief absent:
-# Task declared in SKILL.md frontmatter metadata.{platform}.cron
-# If sands:conflict-scan absent:
-# Task declared in SKILL.md frontmatter metadata.{platform}.cron
-# If sands:travel-check absent:
-# Task declared in SKILL.md frontmatter metadata.{platform}.cron
-# If sands:update absent:
-# Task declared in SKILL.md frontmatter metadata.{platform}.cron
-```
+Check the platform scheduling registry for existing tasks before registering each job. Tasks are declared in SKILL.md frontmatter `metadata.{platform}.cron`.
 
 ## Self-update
 
@@ -193,10 +224,17 @@ Registration during `sands.init`:
 
 1. Read `source:` from frontmatter → extract `{owner}/{repo}` from URL
 2. Read local version from SKILL.md frontmatter `metadata.version`
-3. Fetch remote version from SKILL.md frontmatter: `gh api "repos/{owner}/{repo}/contents/SKILL.md" --jq '.content' | base64 -d | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/'`
+3. Fetch remote version: `gh api "repos/{owner}/{repo}/contents/SKILL.md" --jq '.content' | base64 -d | grep 'version:' | head -1 | sed 's/.*"\(.*\)".*/\1/'`
 4. If remote version equals local version → stop silently
 5. Download and install:
-See `references/okrs.md` for OKR definitions.
+   ```bash
+   TMPDIR=$(mktemp -d)
+   gh api "repos/{owner}/{repo}/tarball/main" > "$TMPDIR/archive.tar.gz"
+   mkdir "$TMPDIR/extracted"
+   tar xzf "$TMPDIR/archive.tar.gz" -C "$TMPDIR/extracted" --strip-components=1
+   cp -R "$TMPDIR/extracted/"* ./
+   rm -rf "$TMPDIR"
+   ```
 6. On failure → retry once. If second attempt fails, report the error and stop.
 7. Output exactly: `I updated Sands from version {old} to {new}`
 
@@ -212,11 +250,13 @@ public
 - **Undo window is 24 hours and non-recurring** — Event undo is only available within 24 hours of the original action. Recurring event scope changes cannot be undone at all.
 - **OAuth tokens may stale between cron runs** — Calendar queries can fail with auth errors if the OAuth token expires between scheduled runs. Always trigger re-authentication before retrying; do not suppress the error.
 
-## Support file map
+## Support File Map
 
 | File | When to read |
 |------|-------------|
+| `references/briefing_windows.md` | Before sands.briefing.generate; when determining morning vs evening briefing time windows |
 | `references/calendar_config.md` | Before configuring calendars, timezone handling, or Google Places API; when setting up skill |
+| `references/credential-files.md` | Before first OAuth setup or when handling token staleness errors |
 | `references/google_calendar_api_quirks.md` | Before manage_event calls; when checking required fields and query range semantics |
 | `references/duration_defaults.md` | Before sands.event.create; when applying smart duration defaults |
 | `references/flexibility_rules.md` | Before sands.schedule.conflicts; when classifying events as FIXED/FLEXIBLE/AMBIGUOUS |
@@ -225,14 +265,4 @@ public
 | `references/preparation_signals.md` | Before sands.briefing.generate; when detecting prep signals from events |
 | `references/travel_time_logic.md` | Before sands.logistics.travel; when resolving departure location and travel mode |
 | `references/vesper_emit_format.md` | Before sands.briefing.generate; when formatting InsightProposal payload for Vesper |
-
-## Update command
-
-This skill self-updates every 24 hours via:
-
-```bash
-sands.update
-```
-
-This pulls the latest version from GitHub and restarts the skill's background tasks if applicable.
 

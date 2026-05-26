@@ -15,7 +15,25 @@
 
 ## Default Configuration
 
-```yaml
+```json
+{
+  "skill_id": "ocas-sands",
+  "skill_version": "2.0.0",
+  "config_version": "2",
+  "created_at": "",
+  "updated_at": "",
+  "primary_calendar_ids": ["primary"],
+  "work_calendar_id": "",
+  "travel_buffer_minutes": 10,
+  "default_travel_mode": "driving",
+  "conflict_lookahead_days": 7,
+  "default_timezone": "America/Los_Angeles",
+  "working_hours": { "start": "09:00", "end": "18:00" },
+  "retention": { "days": 90, "max_records": 10000 }
+}
+```
+
+## OKRs
 skill_okrs:
   - name: conflict_detection_accuracy
     metric: fraction of actual conflicts correctly identified and surfaced
