@@ -12,7 +12,8 @@ Apply FIXED when any of these are true:
 - External attendees present (attendee email domain differs from user's)
 - Title contains: call, meeting, interview, sync, standup, review (with others),
   appointment, doctor, dentist, flight, train, reservation, class, course,
-  workshop, concert, show, game, lesson
+  workshop, concert, show, game, lesson, visit, patient, therapy, session,
+  checkup, consultation, screening
 - Event has a conference link (Google Meet, Zoom, Teams, Webex)
 - Event is recurring (any recurrence pattern)
 - Work calendar busy block

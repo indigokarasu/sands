@@ -59,3 +59,7 @@ For `sands.logistics.travel` (tomorrow's events) and `sands.briefing.generate`:
 3. Build time_min = tomorrow midnight local with correct offset.
 4. Build time_max = day-after-tomorrow midnight local with correct offset.
 5. If in doubt, use UTC equivalents: midnight PDT = 07:00Z, midnight PST = 08:00Z.
+
+## Parsing Event Times from API Responses
+
+**This is a separate pitfall from query construction.** Even with correct query timestamps, the *response* `dateTime` values may be in UTC or the event's own timezone. You MUST call `.astimezone(PDT)` (or the correct local tz) on parsed datetimes before displaying HH:MM to the user. See `references/direct_calendar_access.md` § "Parsing Event Times from API Responses" for the correct code pattern and a concrete example of the bug (showing `01:00` instead of `18:00` for a dinner event).
