@@ -76,6 +76,7 @@ Sands queries entity context from:
 - `sands.status` — skill health, configured calendars, API connectivity, current timezone
 - `sands.journal` — write journal for the current run; called at end of every run
 - `sands.update` — pull latest from GitHub source; preserves journals and data
+- `sands.chronicle.sync` — push travel, medical, and personal calendar events into Chronicle as persistent facts
 
 See `references/briefing_windows.md` for morning/evening briefing time window definitions.
 See `references/credential-files.md` for Google Places API key and OAuth token details, including token staleness handling.
@@ -150,6 +151,7 @@ Registered during `sands.init`. Always check existing jobs before registering:
 | `sands:conflict-scan` | `0 7 * * *` | `sands.schedule.conflicts` | Daily conflict scan for upcoming 7 days |
 | `sands:travel-check` | `0 7 * * *` | `sands.logistics.travel` | Check next day's events for missing travel blocks |
 | `sands:update` | `0 0 * * *` | `sands.update` | Self-update from GitHub source |
+| `sands:chronicle-sync` | `0 8 * * 0` | `sands.chronicle.sync` | Weekly calendar → Chronicle fact sync (Sundays 8 AM) |
 
 All cron jobs use: `--session isolated --light-context --tz America/Los_Angeles`.
 
@@ -179,6 +181,7 @@ public
 - **Timezone offsets change with daylight saving** — Pacific time is `-08:00` (PST) in winter and `-07:00` (PDT) in summer. When building RFC3339 time_min/time_max for queries, determine the correct offset for the TARGET date, not today's date. Using the wrong offset shifts the query window by one hour and can return no events or wrong-day events. The `default_timezone` in config.json (`America/Los_Angeles`) is a hint — always check whether the target date falls in PDT (Mar–Nov) or PST (Nov–Mar) and use the matching offset.
 - **Google Workspace MCP server may be transiently unreachable** — If `get_events` or other MCP calls fail with "unreachable" errors, wait ~40 seconds (the auto-retry cooldown) and try once more before logging `degraded`. A single cooldown wait resolves most transient failures. Only log `degraded: google_workspace_mcp` after the retry also fails.
 - **Single event = no travel blocks needed** — When only one event exists on a travel-check day, there are nothing to insert between. Still write evidence (with `not_activity_reason: no_consecutive_events`) and update `config.json last_travel_check` so gap detection stops flagging the stale timestamp. If the single event is all-day (no timed events at all), use `not_activity_reason: no_timed_events` — this distinguishes "nothing to check" from "one event, nothing between."
+- **Overlapping events = no travel blocks, but flag conflict** — When consecutive timed events overlap (event B starts before event A ends), `gap_minutes` will be negative. Use `not_activity_reason: events_overlap_no_gap` in the evidence log. Also flag the overlap in the `overlap_detected` field so the evening brief and conflict scan can reference it. Do NOT create a travel block for overlapping events — they have no gap to fill.
 - **Google Places API key empty = travel check is observational** — When `google_places_api_key` is empty in config.json, travel blocks can never be auto-created. The travel-check command runs but will only report consecutive event pairs it cannot service. If the key is empty, note this in the evidence log's `degraded` field.
 - **MCP Google Workspace tools may fail with auth errors even when the server is running** — The `mcp_google_workspace_get_events` and related MCP tools can return OAuth errors (401/403, `invalid_grant`) even when the MCP server process is reachable. When ANY MCP calendar call fails with an auth error, switch to the direct Python fallback: import `google_auth_mcp.get_service` from `<hermes-root>/scripts/google_auth.py` and call the Calendar API v3 directly. The direct fallback uses the same credential store (`/root/.google_workspace_mcp/credentials/`) and often succeeds when MCP fails because it bypasses the MCP server's token management layer. See `references/direct_calendar_access.md` for the working pattern.
 - **Reference files may be empty** — `references/briefing_windows.md`, `references/vesper_emit_format.md`, and `references/preparation_signals.md` are currently 0 bytes. Do not block on reading them; proceed with the defaults documented in this SKILL.md (morning brief = today's events, evening brief = tomorrow's events, both in `America/Los_Angeles`).
@@ -207,4 +210,6 @@ public
 | `references/vesper_emit_format.md` | Before sands.briefing.generate; formatting payload for Vesper |
 | `references/self-update-sands.md` | Before running sands.update |
 | `references/direct_calendar_access.md` | When MCP Google Workspace tools are unavailable; direct Python fallback pattern |
+| `references/chronicle_sync.md` | Before sands.chronicle.sync; event classification rules, value format, ingest script path |
+| `references/gotchas.md` | Common pitfalls, OAuth quirks, MCP tool limitations, cron-mode constraints, and UCSF MyChart double-import pattern |
 
