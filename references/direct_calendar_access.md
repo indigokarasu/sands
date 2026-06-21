@@ -112,3 +112,13 @@ Key rules for cron-mode scripts:
 | `401/403` | OAuth token expired or insufficient scope | Log `degraded: google_calendar_api`, trigger re-auth |
 | `invalid_grant` | Refresh token revoked | Log `degraded: oauth_stale`, surface re-auth instructions |
 | `HttpError` (other) | Transient or unknown | Retry once after 5s, then log `degraded` |
+
+## Composio Fallback for 404 Calendar IDs (Added 2026-06-15)
+
+When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., TheTopaz `contact@example.com`, Family `family08350553536598846140@group.calendar.google.com`), use Composio as an alternative query path:
+
+1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
+2. Use `GOOGLECALENDAR_FIND_EVENT` via `COMPOSIO_MULTI_EXECUTE_TOOL`
+3. Pass the calendar ID exactly as shown in Composio's calendar list
+
+See `references/known-calendar-ids.md` for the current working calendar IDs and the full Composio fallback pattern.

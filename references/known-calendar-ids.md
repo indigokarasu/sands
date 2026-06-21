@@ -1,12 +1,15 @@
 # Known-Good Calendar IDs
 
-Verified working calendar IDs for this environment (as of 2026-06-13):
+Verified working calendar IDs for this environment (as of 2026-06-17):
 
 | Calendar | ID | Access | Notes |
 |---|---|---|---|
-| Personal | `google-workspace-user` | Read (direct API + MCP) | The working personal calendar |
-| Family | `family08350553536598846140@group.v.calendar.google.com` | 404 (inaccessible) | Listed by MCP list_calendars but returns 404 on query |
+| Personal | `google-workspace-user` | Read (direct API + MCP + Composio) | The working personal calendar |
+| TheTopaz | `contact@example.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17 |
+| Family | `family08350553536598846140@group.calendar.google.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17; earlier 404 was likely transient |
+| Holidays | `en.usa#holiday@group.v.calendar.google.com` | Read (direct API) | US holidays; all-day events only |
 | Primary (MCP) | `mx.indigo.karasu@gmail.com` | 404 on direct API | Shown by MCP list_calendars but not queryable via direct fallback |
+| Work | `owner.operator@<employer>.com` | FreeBusyReader only | Read-only (free/busy); cannot read event details |
 
 ## Recommendation
 
@@ -31,3 +34,15 @@ To find working calendar IDs:
 2. For each calendar ID, attempt a test query via direct Python fallback
 3. Log which IDs return events vs 404
 4. Update `config.json` with only the working IDs
+
+## Composio Fallback Pattern (Added 2026-06-15)
+
+When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings, use Composio as an alternative query path:
+
+1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
+2. Use `GOOGLECALENDAR_FIND_EVENT` (or `GOOGLECALENDAR_BATCH_EVENTS` for bulk) via `COMPOSIO_MULTI_EXECUTE_TOOL`
+3. Pass the calendar ID as shown in Composio's calendar list (e.g., `contact@example.com`, `family08350553536598846140@group.calendar.google.com`)
+
+This pattern worked for TheTopaz and Family calendars which returned 404 on direct API but returned events via Composio.
+
+**Key difference**: Composio's calendar list shows `family08350553536598846140@group.calendar.google.com` (no `.v`), while the earlier known-good table showed `@group.v.calendar.google.com`. Use the ID exactly as returned by Composio's list_calendars.
