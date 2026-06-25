@@ -70,6 +70,7 @@ through the standard journal briefing payload.
       "end": "HH:MM",
       "location": "string | null",
       "calendar": "personal | family",
+      "htmlLink": "string  // Google Calendar event.htmlLink from the API, so the briefing can deep-link to the event",
       "all_day": false,
       "conflict": false,
       "conflict_note": "string | null",
@@ -107,3 +108,6 @@ through the standard journal briefing payload.
 - `summary_note` should combine overview with prep focus: "You have 5 events today from
   9:00 to 5:00, with about 3.5 free hours. 2 items need preparation."
 - Include `work_busy_blocks` as unavailability overlay
+
+## Event deep-links (added 2026-06-25)
+Each event MUST include `htmlLink` — the `htmlLink` field returned by the Google Calendar API for that event. The briefing email renders the event title as a clickable (non-blue) link to it. If an event was created from / references an email, also include `email_link` (the Gmail message URL).
