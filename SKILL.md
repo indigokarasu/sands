@@ -1,7 +1,7 @@
 ---
 name: ocas-sands
-description: 'Calendar management. Use for viewing, querying, creating, modifying, deleting, or analyzing calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments, recurring event management, and daily schedule briefings for Vesper. Do not use for reminders without calendar context, task management, or general time/timezone questions.'
 license: MIT
+description: 'Calendar management. Use for viewing, querying, creating, modifying, deleting, or analyzing calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments, recurring event management, and daily schedule briefings for Vesper. Do not use for reminders without calendar context, task management, or general time/timezone questions.'
 source: https://github.com/indigokarasu/sands
 includes:
 - references/**
@@ -38,6 +38,8 @@ Sands manages calendar events through natural language — creating, querying, m
 - Focus time and out-of-office management
 - When any skill needs calendar operations
 
+For example, when the user says "schedule a meeting with owner at 3pm tomorrow," Sands creates the event with conflict pre-check and smart duration defaults.
+
 ## When NOT to Use
 
 - Email or message sending (use Dispatch)
@@ -49,18 +51,18 @@ Sands manages calendar events through natural language — creating, querying, m
 
 Sands owns calendar event management, conflict analysis, flexibility classification, travel time insertion via Google Places API, and emitting schedule signals to Vesper.
 
-Sands does not own: communications (Dispatch), travel reservations (Voyage), general research (Sift), entity knowledge (Elephas/Weave).
+Sands does not own: communications (Dispatch), travel reservations (Voyage), general research (Sift), entity knowledge (Weave).
 
 ## Ontology types
 
 Sands works with these types from `spec-ocas-ontology.md`:
 
-- **Place** — event locations resolved via Google Places API during `sands.logistics.travel`. Location data retained in `decisions.jsonl` as decision context only. Sands does not emit Place signals to Elephas.
-- **Event** (Concept subclass) — calendar events managed through Google Calendar, not Chronicle. Sands does not emit Event signals to Elephas.
+- **Place** — event locations resolved via Google Places API during `sands.logistics.travel`. Location data retained in `decisions.jsonl` as decision context only.
+- **Event** (Concept subclass) — calendar events managed through Google Calendar, not Chronicle.
 
 Sands queries entity context from:
 - **Weave** (read-only) — attendee identity resolution during conflict classification
-- **Elephas / Chronicle** — current location context for travel departure resolution
+- **Chronicle** — current location context for travel departure resolution
 
 ## Commands
 
@@ -70,7 +72,7 @@ Sands queries entity context from:
 - `sands.event.delete` — cancel event with travel block cleanup and recurring scope control
 - `sands.event.undo` — revert most recent calendar action (within 24 hours)
 - `sands.schedule.free` — find available time slots for a given duration with constraints
-- `sands.schedule.conflicts` — analyze time window for conflicts with flexibility classification
+- `sands.schedule.conflicts` — analyze time window for conflicts with flexibility classification. See `references/conflict-report-format.md` for output template.
 - `sands.logistics.travel` — insert travel time block between events via Google Places API
 - `sands.briefing.generate` — generate structured schedule summary for Vesper emission
 - `sands.status` — skill health, configured calendars, API connectivity, current timezone
@@ -120,7 +122,7 @@ Universal OKRs from spec-ocas-journal.md apply to all runs. See `references/okrs
 ## Optional skill cooperation
 
 - Weave — attendee identity resolution and current location context
-- Elephas — current location or travel context from Chronicle
+- Chronicle — current location or travel context
 - Voyage — travel reservations detected in calendar surfaced for Voyage to manage
 - Vesper — Vesper reads Sands schedule briefs at journal payload fields (see interfaces specification) during briefing generation (cooperative write; Sands pushes to Vesper (via journal briefing payload))
 
@@ -171,7 +173,7 @@ public
 - **⚠️ write_file OVERWRITES — JSONL append requires read-then-rewrite or the helper script** — The `write_file` tool replaces the entire file. NEVER call `write_file` on `evidence.jsonl`, `decisions.jsonl`, or `events.jsonl` with only the new record — you will destroy all prior history. Two safe approaches:
   1. **Preferred:** Use the `scripts/append_jsonl.py` helper: `terminal("python3 <skill_dir>/scripts/append_jsonl.py <path> '<json_record>'")`. It reads, appends, rewrites, and verifies line count atomically.
   2. **Manual:** (1) `read_file` the existing JSONL, (2) construct the full content (all existing lines + new line), (3) `write_file` with the complete content. Always verify line count increased by 1 after writing.
-  If you accidentally overwrite, check session context for the original contents to restore from.
+    If you accidentally overwrite, check session context for the original contents to restore from.
 - **Work calendar is read-only** — Sands can overlay work calendar busy blocks but must never write to `work_calendar_id`. Writing to a read-only calendar will fail silently or produce API errors.
 - **All-day events don't conflict with timed events** — Per the hard boundary, all-day events are excluded from conflict detection with timed events unless the user explicitly asks. This can hide real scheduling issues if the user expects otherwise.
 - **Google Places API failure is surfaced, not silently handled** — If the Google Places API is unavailable, Sands does NOT fall back to distance heuristics. It surfaces a warning and asks for a manual estimate.
@@ -183,14 +185,24 @@ public
 - **Single event = no travel blocks needed** — When only one event exists on a travel-check day, there are nothing to insert between. Still write evidence (with `not_activity_reason: no_consecutive_events`) and update `config.json last_travel_check` so gap detection stops flagging the stale timestamp. If the single event is all-day (no timed events at all), use `not_activity_reason: no_timed_events` — this distinguishes "nothing to check" from "one event, nothing between."
 - **Overlapping events = no travel blocks, but flag conflict** — When consecutive timed events overlap (event B starts before event A ends), `gap_minutes` will be negative. Use `not_activity_reason: events_overlap_no_gap` in the evidence log. Also flag the overlap in the `overlap_detected` field so the evening brief and conflict scan can reference it. Do NOT create a travel block for overlapping events — they have no gap to fill.
 - **Google Places API key empty = travel check is observational** — When `google_places_api_key` is empty in config.json, travel blocks can never be auto-created. The travel-check command runs but will only report consecutive event pairs it cannot service. If the key is empty, note this in the evidence log's `degraded` field.
-- **MCP Google Workspace tools may fail with auth errors even when the server is running** — The `mcp_google_workspace_get_events` and related MCP tools can return OAuth errors (401/403, `invalid_grant`) even when the MCP server process is reachable. When ANY MCP calendar call fails with an auth error, switch to the direct Python fallback: import `google_auth_mcp.get_service` from `<hermes-root>/scripts/google_auth.py` and call the Calendar API v3 directly. The direct fallback uses the same credential store (`/root/.google_workspace_mcp/credentials/`) and often succeeds when MCP fails because it bypasses the MCP server's token management layer. See `references/direct_calendar_access.md` for the working pattern.
+- **MCP Google Workspace tools may fail with auth errors even when the server is running** — The `mcp_google_workspace_get_events` and related MCP tools can return OAuth errors (401/403, `invalid_grant`) even when the MCP server process is reachable. When ANY MCP calendar call fails with an auth error, switch to the direct Python fallback: `from google_auth import get_calendar_service` from `<hermes-root>/scripts/google_auth.py` and call the Calendar API v3 directly. The direct fallback uses the same credential store (`/root/.google_workspace_mcp/credentials/`) and often succeeds when MCP fails because it bypasses the MCP server's token management layer. See `references/direct_calendar_access.md` for the working pattern.
 - **Reference files may be empty** — `references/briefing_windows.md`, `references/vesper_emit_format.md`, and `references/preparation_signals.md` are currently 0 bytes. Do not block on reading them; proceed with the defaults documented in this SKILL.md (morning brief = today's events, evening brief = tomorrow's events, both in `America/Los_Angeles`).
 - **Calendar IDs can 404** — If a configured `primary_calendar_id` returns 404 (not found), log it in `degraded` and continue with the remaining calendars. Surface the broken calendar ID to the user so they can update `config.json`. Do not let one broken calendar block the entire query.
-- **execute_code is blocked in cron mode** — Cron jobs run without a user present to approve `execute_code`, so it will be rejected. When Sands needs to run Python analysis scripts (conflict detection, travel analysis, etc.) from a cron job, use the `write_file` + `terminal` pattern instead: (1) `write_file` the script to a temp path like `/tmp/sands_analysis.py`, (2) `terminal("python3 /tmp/sands_analysis.py")` to run it, (3) read results from stdout or a temp JSON output file. See `references/direct_calendar_access.md` for the full cron-compatible pattern.
+- **execute_code is blocked in cron mode** — Cron jobs run without a user present to approve `execute_code`, so it will be rejected. When Sands needs to run Python analysis scripts (conflict detection, travel analysis, etc.) from a cron job, use the `write_file` + `terminal` pattern instead: (1) `write_file` the script to a temp path like `/tmp/sands_analysis.py`, (2) `terminal("python3 /tmp/sands_analysis.py")` to run it, (3) read results from stdout or a temp JSON output file. See `references/direct_calendar_access.md` for the full cron-compatible pattern. For conflict scans, you can copy and adapt the reusable template at `scripts/conflict_scan_template.py`.
 - **Cross-calendar duplicates are conflicts** — When the same event appears on multiple calendars (detected by matching summary + start time + location), flag it as a DUPLICATE conflict. Timezone offset differences between calendars can make the same event appear at different UTC times — normalize to local time before comparing. Recommend removing the duplicate from the non-canonical calendar.
 - **Events crossing midnight UTC may belong to the previous local day** — When querying with UTC-based time windows, an event starting at `2026-06-07T01:00:00Z` is actually `2026-06-06T18:00:00-07:00` (6 PM PDT on June 6). Always convert event start times to local timezone (`America/Los_Angeles`) before assigning to a date. The `singleEvents=True` parameter in the Calendar API expands recurring events but does not normalize timezones — the response preserves the event's original timezone, which may differ from the query window timezone.
 - **MCP tools require `user_google_email` on every call** — Every `mcp_google_workspace_*` tool requires a `user_google_email` parameter (the authenticated user's Google email). Omitting it produces a Pydantic validation error that doesn't clearly say "missing parameter." Always include `user_google_email` — use the agent's own email (e.g., `mx.indigo.karasu@gmail.com`) unless the user specifies otherwise. This applies to ALL MCP Google Workspace tools, not just `get_events`.
 - **Zero-duration events are warnings, not conflicts** — Events where `start == end` do not overlap with anything and should not be flagged as conflicts. Instead, flag them as `zero_duration` warnings in the report. These are almost always data quality issues (end time not set correctly). See `references/conflict_detection.md`.
+- **`400 Bad Request` from oauth2.googleapis.com = dead credentials** — Besides `invalid_grant`, expired/revoked refresh tokens can return HTTP `400` from the token endpoint. Surfaces as `"400 Client Error: Bad Request for url: https://oauth2.googleapis.com/token"` from `get_service()`. Treat identically to `invalid_grant`: log, move to next account. Do NOT interpret `400` as a bug in your code.
+
+- **⚠️ Interactive command access** — Sands commands like `sands.logistics.travel` are not direct shell commands. They are accessed through the skill's interactive menu. Invoke the skill with `/` command (or your interface's equivalent) to see the two-level menu, then navigate to the desired command (e.g., Travel Check → Check next day events for missing travel blocks). Direct shell invocation of sands commands will not work and will produce "command not found" errors.
+- **`config.json` `auth_status` can be stale after fallback** — When the primary account's token is dead but the fallback account succeeds, `auth_status` may still say `MCP_ONLY` or `STALE_OAUTH`. After a successful direct-Python fallback, update `auth_status` to `OK` so the next run doesn't pre-emptively assume degradation. The field reflects the *system's* ability to reach the calendar, not any single account's token state.
+- **Journal directory may not exist on first cron run** — The `## Initialization` step 4 says to create `{agent_root}/commons/journals/ocas-sands/`, but journal writes have been observed to land at `{data_dir}/journals/` (i.e., the same parent as `config.json`). Before calling `append_jsonl.py` for journals, ensure the directory exists: `mkdir -p "$DATA_DIR/journals"`. If the append fails with `FileNotFoundError` on the parent, create it and retry. The script itself only handles file-level existence, not directory creation.
+- **No evening-brief template exists** — `templates/sands_briefing_morning.py` covers only morning briefs. Evening briefs use the same event-query flow but omit prep-signal checking (no prep items for future dates) and emit `proposal_type: routine_prediction` instead of `preparation_checklist`. When generating evening briefs, follow the inline pattern: query all primary calendars with PDT-correct offsets, sort by start time, check for overlaps/duplicates within the target date, build the Vesper InsightProposal payload (`brief_type: evening`, `proposal_type: routine_prediction`), render the report, write evidence with `command: sands.briefing.generate`, write to observation journal, update `config.json last_evening_brief`.
+
+## Cron Script Templates
+
+- `templates/sands_briefing_morning.py` — Reusable cron-compatible morning briefing script with multi-account fallback, dedup, conflict detection, and prep-signal checking.
 
 ## Support File Map
 
@@ -204,12 +216,15 @@ public
 | `references/duration_defaults.md` | Before sands.event.create |
 | `references/flexibility_rules.md` | Before sands.schedule.conflicts |
 | `references/conflict_detection.md` | Before conflict analysis |
+| `references/conflict-report-format.md` | Before generating conflict scan report output |
 | `references/recurring_events.md` | Before creating/modifying/deleting recurring events |
 | `references/preparation_signals.md` | Before sands.briefing.generate |
 | `references/travel_time_logic.md` | Before sands.logistics.travel |
 | `references/vesper_emit_format.md` | Before sands.briefing.generate; formatting payload for Vesper |
 | `references/self-update-sands.md` | Before running sands.update |
 | `references/direct_calendar_access.md` | When MCP Google Workspace tools are unavailable; direct Python fallback pattern |
-| `references/chronicle_sync.md` | Before sands.chronicle.sync; event classification rules, value format, ingest script path |
+| `scripts/conflict_scan_template.py` | Reusable cron-compatible conflict scan script with multi-account OAuth fallback |
+| `references/chronicle_sync.md` | Before sands.chronicle.sync; event classification rules, value format, ingest script path, cron auth pattern, classification pitfalls |
 | `references/gotchas.md` | Common pitfalls, OAuth quirks, MCP tool limitations, cron-mode constraints, and UCSF MyChart double-import pattern |
-
+| `templates/sands_briefing_morning.py` | Reusable cron-compatible morning briefing script — multi-account fallback, dedup, conflict detection, prep signals |
+| `references/mcp_fallback_briefing.md` | When encountering dependency errors with the morning briefing script |
