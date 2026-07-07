@@ -23,27 +23,39 @@ Called by cron weekly, or manually after significant calendar changes (new trave
 
 ## Execution Pattern (Cron-Safe)
 
-Since `execute_code` is blocked in cron, use `write_file` + `terminal`:
+Since `execute_code` is blocked in cron and MCP tools are unavailable in isolated sessions,
+use **direct Python OAuth** + `write_file` + `terminal`:
 
 ```
-Step 1: Query calendar events via MCP tools
-  - Use mcp_google_workspace_get_events (or direct fallback) for google-workspace-user
-  - Also query contact@example.com, family08350553536598846140@group.calendar.google.com
+Step 1: Write a query+classify script to /tmp/sands_chronicle_query.py
+  - Import google_auth_mcp.get_service from <hermes-root>/scripts
+  - Query all 3 calendars (personal, thetopaz, family) via Calendar API v3
   - Time window: 18 months back → 6 months forward from today
-  - pageSize=250, singleEvents=True
+  - singleEvents=True, orderBy='startTime', maxResults=250, paginate
+  - Deduplicate by summary + start time across calendars
+  - Classify each event (see criteria table + pitfalls above)
+  - Output JSON to stdout
 
-Step 2: Classify each event
-  - Apply criteria table above
-  - Build value text (human-readable, see format below)
-  - Set valid_from = event start date, valid_until = event end date (for multi-day)
+Step 2: Run the script
+  terminal("python3 /tmp/sands_chronicle_query.py > /tmp/sands_events_for_chronicle.json")
 
-Step 3: Write classified events to /tmp/sands_events_for_chronicle.json
+Step 3: Extract events array (wrapper outputs {events, errors, stats})
+  terminal("python3 -c \"import json; d=json.load(open('/tmp/sands_events_for_chronicle.json')); json.dump(d['events'], open('/tmp/sands_events_clean.json','w'), indent=2)\"")
 
 Step 4: Run ingest script
-  terminal("python3 <hermes-root>/scripts/sands_chronicle_sync.py /tmp/sands_events_for_chronicle.json")
+  terminal("python3 <hermes-root>/scripts/sands_chronicle_sync.py /tmp/sands_events_clean.json")
 
-Step 5: Update config.json last_chronicle_sync timestamp
+Step 5: Update config.json last_chronicle_sync timestamp + count
+  - last_chronicle_sync = current timestamp
+  - last_chronicle_sync_count = number of events imported
+
+Step 6: Write evidence + action journal entries
+  - evidence.jsonl: record result, counts, any errors
+  - action.jsonl: record run_id, action, result, counts by type
 ```
+
+**Timezone note:** Always use the correct DST offset for the target date when building
+timeMin/timeMax. June = PDT (-07:00), January = PST (-08:00).
 
 ## Value Text Format
 
@@ -82,11 +94,37 @@ The ingest script deactivates all prior `external_sands` facts for the predicate
 `<hermes-home>/commons/db/chronicle/chronicle.db`
 Script: `<hermes-root>/scripts/sands_chronicle_sync.py`
 
-## Auth Note
+## Auth Note: Cron vs. Interactive Sessions
 
-Direct Python OAuth for Google Calendar is stale (see `config.json auth_status: MCP_ONLY`).
-Always use MCP calendar tools (`mcp_google_workspace_get_events`) when running in a Claude session.
-The Python ingest script only writes to Chronicle DB — it does NOT need calendar auth.
+**Cron jobs (isolated sessions):** Use **direct Python OAuth** via `google_auth_mcp.get_service`.
+MCP tools (`mcp_google_workspace_get_events`) are NOT available in isolated cron sessions.
+The direct fallback at `<hermes-root>/scripts/google_auth.py` reads the same credential store
+(`/root/.google_workspace_mcp/credentials/`) and works reliably in cron mode.
+
+**Interactive sessions:** Can use either MCP tools or direct Python. Both auth paths work.
+
+The Python ingest script (`sands_chronicle_sync.py`) only writes to Chronicle DB — it does NOT need calendar auth.
+
+## Classification Pitfalls (Learned from 2026-06-28 sync)
+
+Keyword-based classification produces false positives from overlapping vocabulary:
+
+1. **"Visit" is ambiguous** — Events like "Appointment: Visit at Watercourse Way Bath House Spa" contain
+   both "visit" (travel keyword) AND "appointment" (medical keyword), AND have a location. These get
+   classified as travel because travel has priority. **Fix: medical keywords should take priority over
+   travel when the event title explicitly says "appointment" or a provider name appears.**
+
+2. **Event titles that mention medical-sounding words but aren't medical** — "Milo's band Presidio Jazz Lab"
+   was classified as medical because "appointment" appeared in the title on the family calendar. Always
+   check whether the event is a calendar placeholder for a booking reminder vs. actual medical content.
+
+3. **Birthday all-day events** — These generate a large volume of `attended_event` facts (196 of 455
+   classified). They're accurate but may be noise-heavy. Consider whether ALL birthdays need Chronicle
+   facts or just family/close-friend birthdays.
+
+4. **Multi-day all-day events at non-SF locations** — These correctly classify as travel, but the
+   "location" field is sometimes missing for all-day events, making the fact text less useful
+   ("Trip to Unknown location"). When location is missing, try to infer from the summary.
 
 ## Calendars to Query
 

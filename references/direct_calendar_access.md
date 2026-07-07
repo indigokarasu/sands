@@ -18,14 +18,36 @@ Every `mcp_google_workspace_*` tool requires a `user_google_email` parameter. Om
 - `/root/.google_workspace_mcp/credentials/<email>.json` — credential files
 - Python packages: `google-auth`, `google-api-python-client`
 
+## Convenience Wrappers (Preferred)
+
+The `google_auth.py` module provides convenience wrappers that are simpler than raw `get_service()`:
+
+```python
+import sys
+sys.path.insert(0, '<hermes-root>/scripts')
+from google_auth import get_calendar_service
+
+# Returns a ready-to-use Calendar v3 service object
+calendar = get_calendar_service('google-workspace-user')
+# Or with fallback:
+calendar = get_calendar_service('mx.indigo.karasu@gmail.com')
+```
+
+Available wrappers:
+- `get_calendar_service(account)` — Calendar v3 with `https://www.googleapis.com/auth/calendar` scope
+- `get_gmail_service(account)` — Gmail v1 with `https://www.googleapis.com/auth/gmail.modify` scope
+- `get_service(api, version, scopes, account)` — raw access for any Google API
+
+**Use the convenience wrappers unless you need a non-standard scope.** They avoid the `get_service() missing 2 required positional arguments` error that occurs when you forget `api_version` and `scopes`.
+
 ## Query Pattern
 
 ```python
-import json, sys
+import sys
 sys.path.insert(0, '<hermes-root>/scripts')
-from google_auth_mcp import get_service
+from google_auth import get_calendar_service
 
-calendar = get_service('calendar', 'v3', ['https://www.googleapis.com/auth/calendar.readonly'])
+calendar = get_calendar_service('google-workspace-user')
 
 # Query a single calendar
 result = calendar.events().list(
@@ -112,6 +134,53 @@ Key rules for cron-mode scripts:
 | `401/403` | OAuth token expired or insufficient scope | Log `degraded: google_calendar_api`, trigger re-auth |
 | `invalid_grant` | Refresh token revoked | Log `degraded: oauth_stale`, surface re-auth instructions |
 | `HttpError` (other) | Transient or unknown | Retry once after 5s, then log `degraded` |
+
+## Multi-Account Fallback (Added 2026-06-28)
+
+When the default account's OAuth token is revoked (`invalid_grant`), the other credential in the store may still be valid — **and it may be able to read calendars that the dead account owned**.
+
+**Discovered 2026-06-28:** `google-workspace-user`'s token was revoked, but `mx.indigo.karasu@gmail.com`'s token successfully read BOTH `google-workspace-user` AND `family08350553536598846140@group.calendar.google.com` calendars. The indigo account has been granted access to owner's calendar (likely via calendar sharing), so it serves as a complete fallback.
+
+**Fallback order for cron runs:**
+1. Try default account (`google-workspace-user`) — works when token is valid
+2. On `invalid_grant`, try `mx.indigo.karasu@gmail.com` — works when indigo token is valid AND has calendar sharing permissions
+3. If both fail, log `degraded: oauth_stale` and report to user
+
+**Pattern:**
+```python
+import sys
+sys.path.insert(0, '<hermes-root>/scripts')
+from google_auth import get_calendar_service
+
+calendars_to_query = ['google-workspace-user', 'family08350553536598846140@group.calendar.google.com']
+accounts_to_try = ['google-workspace-user', 'mx.indigo.karasu@gmail.com']
+
+calendar = None
+working_account = None
+
+for account in accounts_to_try:
+    try:
+        cal = get_calendar_service(account)
+        # Test with a lightweight call
+        cal.calendarList().list(maxResults=1).execute()
+        calendar = cal
+        working_account = account
+        break
+    except Exception as e:
+        print(f"Account {account} failed: {e}")
+        continue
+
+if calendar is None:
+    # Both accounts dead — log degraded and report
+    print("DEGRADED: Both OAuth tokens invalid")
+else:
+    print(f"Using account: {working_account}")
+    # Proceed with calendar.events().list() for each calendar ID
+```
+
+**Key insight:** Don't assume the indigo account can only read indigo's own calendar. Test it against all configured calendar IDs — it may have sharing permissions that make it a full fallback. This is especially valuable in cron mode where re-auth is impossible.
+
+**After successful fallback:** Reset `config.json` `auth_status` to `OK` (the previous `STALE_OAUTH` was only for the owner account, not the overall system).
 
 ## Composio Fallback for 404 Calendar IDs (Added 2026-06-15)
 
