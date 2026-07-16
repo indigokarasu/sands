@@ -10,6 +10,13 @@ includes:
 metadata:
   author: Indigo Karasu (indigokarasu)
   version: 2.2.0
+  hermes:
+    category: productivity
+    tags:
+    - calendar
+    - scheduling
+    - events
+    - OCAS-core
 tags:
 - calendar
 - scheduling
@@ -87,9 +94,9 @@ See `references/credential-files.md` for Google Places API key and OAuth token d
 
 After every Sands command:
 
-1. Persist event interactions to `events.jsonl` (event_id, calendar_id, title, start, end, action, recurrence_scope, previous_values)
-2. Log material decisions (conflict resolutions, travel insertions) to `decisions.jsonl`
-3. Write journal via `sands.journal` — Observation Journal for query/free/conflicts/status, Action Journal for create/modify/delete/travel/brief/undo
+- [ ] Persist event interactions to `events.jsonl` (event_id, calendar_id, title, start, end, action, recurrence_scope, previous_values)
+- [ ] Log material decisions (conflict resolutions, travel insertions) to `decisions.jsonl`
+- [ ] Write journal via `sands.journal` — Observation Journal for query/free/conflicts/status, Action Journal for create/modify/delete/travel/brief/undo
 
 **Post-mutation verification**: After any create/modify/delete command, re-query the calendar for the affected event ID and confirm the change is reflected (correct title, time, calendar placement, or removal). If the event state does not match what was requested, log a `calendar_mismatch` entry in `evidence.jsonl` and alert the user — never silently assume the write succeeded.
 
@@ -135,12 +142,12 @@ Universal OKRs from spec-ocas-journal.md apply to all runs. See `references/okrs
 
 On first invocation of any Sands command, run `sands.init`:
 
-1. Create `{agent_root}/commons/data/ocas-sands/` directory
-2. Write default `config.json` with ConfigBase fields if absent
-3. Create empty JSONL files: `decisions.jsonl`, `events.jsonl`, `evidence.jsonl`, `intents.jsonl`
-4. Create `{agent_root}/commons/journals/ocas-sands/` and ensure both journal files exist (create empty if absent): `action.jsonl`, `observation.jsonl`
-5. Register cron jobs listed below if not already present (check the platform scheduling registry first)
-6. Log initialization as a DecisionRecord in `decisions.jsonl`
+- [ ] Create `{agent_root}/commons/data/ocas-sands/` directory
+- [ ] Write default `config.json` with ConfigBase fields if absent
+- [ ] Create empty JSONL files: `decisions.jsonl`, `events.jsonl`, `evidence.jsonl`, `intents.jsonl`
+- [ ] Create `{agent_root}/commons/journals/ocas-sands/` and ensure both journal files exist (create empty if absent): `action.jsonl`, `observation.jsonl`
+- [ ] Register cron jobs listed below if not already present (check the platform scheduling registry first)
+- [ ] Log initialization as a DecisionRecord in `decisions.jsonl`
 
 ## Background tasks
 
