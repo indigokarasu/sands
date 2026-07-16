@@ -14,6 +14,12 @@ and verifies line count increased by 1.
 import json
 import sys
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 append_jsonl.py")
+    sys.exit(0)
+
+
 def append_jsonl(path: str, record: dict) -> int:
     """Append a record to a JSONL file. Returns new line count."""
     with open(path, 'r') as f:

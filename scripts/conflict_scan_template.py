@@ -22,8 +22,14 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 conflict_scan_template.py")
+    sys.exit(0)
+
 sys.path.insert(0, '<hermes-root>/scripts')
 from google_auth_mcp import get_service
+
 
 # --- Config ---
 CONFIG_PATH = '/root/indigo-repo/commons/data/ocas-sands/config.json'
