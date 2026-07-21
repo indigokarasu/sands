@@ -1,7 +1,7 @@
 # sands
 
 <p align="center">
-<img src="./assets/readme/hero.svg" width="100%" alt="Sands: natural-language calendar management — create, query, modify, and delete events across multiple calendars.">
+<img src="./assets/readme/hero.jpg" width="100%" alt="Sands: natural-language calendar management — create, query, modify, and delete events across multiple calendars.">
 </p>
 
 sands — Sands: natural-language calendar management — create, query, modify, and delete events across multiple calendars.
