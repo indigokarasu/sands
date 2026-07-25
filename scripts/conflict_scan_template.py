@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """Sands conflict scan template — cron-compatible.
 
 Usage: python3 conflict_scan_template.py
@@ -27,12 +28,12 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     print((__doc__ or "").strip() or "Usage: python3 conflict_scan_template.py")
     sys.exit(0)
 
-sys.path.insert(0, '<hermes-root>/scripts')
+sys.path.insert(0, 'os.path.expanduser("~/.hermes")/scripts')
 from google_auth_mcp import get_service
 
 
 # --- Config ---
-CONFIG_PATH = '/root/indigo-repo/commons/data/ocas-sands/config.json'
+CONFIG_PATH = 'os.path.expanduser("~/indigo-repo")/commons/data/ocas-sands/config.json'
 with open(CONFIG_PATH) as f:
     config = json.load(f)
 
@@ -40,7 +41,7 @@ PRIMARY_CALENDARS = config['primary_calendar_ids']
 TZ = ZoneInfo(config.get('default_timezone', 'America/Los_Angeles'))
 
 # --- Multi-account fallback ---
-ACCOUNTS_TO_TRY = ['google-workspace-user', 'mx.indigo.karasu@gmail.com']
+ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), 'mx.indigo.karasu@gmail.com']
 
 calendar = None
 working_account = None
