@@ -28,7 +28,7 @@ use **direct Python OAuth** + `write_file` + `terminal`:
 
 ```
 Step 1: Write a query+classify script to /tmp/sands_chronicle_query.py
-  - Import google_auth_mcp.get_service from <hermes-root>/scripts
+  - Import google_auth_mcp.get_service from <hermes-home>/scripts
   - Query all 3 calendars (personal, thetopaz, family) via Calendar API v3
   - Time window: 18 months back → 6 months forward from today
   - singleEvents=True, orderBy='startTime', maxResults=250, paginate
@@ -43,7 +43,7 @@ Step 3: Extract events array (wrapper outputs {events, errors, stats})
   terminal("python3 -c \"import json; d=json.load(open('/tmp/sands_events_for_chronicle.json')); json.dump(d['events'], open('/tmp/sands_events_clean.json','w'), indent=2)\"")
 
 Step 4: Run ingest script
-  terminal("python3 <hermes-root>/scripts/sands_chronicle_sync.py /tmp/sands_events_clean.json")
+  terminal("python3 <hermes-home>/scripts/sands_chronicle_sync.py /tmp/sands_events_clean.json")
 
 Step 5: Update config.json last_chronicle_sync timestamp + count
   - last_chronicle_sync = current timestamp
@@ -91,15 +91,15 @@ The ingest script deactivates all prior `external_sands` facts for the predicate
 
 ## Chronicle DB
 
-`<hermes-home>/commons/db/chronicle/chronicle.db`
-Script: `<hermes-root>/scripts/sands_chronicle_sync.py`
+`<hermes-home>/profiles/indigo/commons/db/chronicle/chronicle.db`
+Script: `<hermes-home>/scripts/sands_chronicle_sync.py`
 
 ## Auth Note: Cron vs. Interactive Sessions
 
 **Cron jobs (isolated sessions):** Use **direct Python OAuth** via `google_auth_mcp.get_service`.
 MCP tools (`mcp_google_workspace_get_events`) are NOT available in isolated cron sessions.
-The direct fallback at `<hermes-root>/scripts/google_auth.py` reads the same credential store
-(`/root/.google_workspace_mcp/credentials/`) and works reliably in cron mode.
+The direct fallback at `<hermes-home>/scripts/google_auth.py` reads the same credential store
+(`<gworkspace-creds>/credentials/`) and works reliably in cron mode.
 
 **Interactive sessions:** Can use either MCP tools or direct Python. Both auth paths work.
 
@@ -130,8 +130,8 @@ Keyword-based classification produces false positives from overlapping vocabular
 
 | Calendar | ID |
 |---|---|
-| Personal | `google-workspace-user` |
-| TheTopaz | `contact@example.com` |
+| Personal | `<user-google-email>` |
+| TheTopaz | `<third-party-email>` |
 | Family | `family08350553536598846140@group.calendar.google.com` |
 
-Skip: Work (`owner.operator@<employer>.com`) — read-only free/busy only, no event details.
+Skip: Work (`<account-identity>@<employer>.com`) — read-only free/busy only, no event details.

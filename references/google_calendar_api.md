@@ -3,7 +3,7 @@
 ## Authentication
 
 Google OAuth tokens are stored at:
-`/root/.google_workspace_mcp/credentials/google-workspace-user.json`
+`<gworkspace-creds>/credentials/<user-google-email>.json`
 
 ### Python authentication code (with proactive refresh)
 
@@ -15,7 +15,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-with open('/root/.google_workspace_mcp/credentials/google-workspace-user.json') as f:
+with open('<gworkspace-creds>/credentials/<user-google-email>.json') as f:
     token_data = json.load(f)
 
 creds = Credentials.from_authorized_user_info(token_data)
@@ -24,7 +24,7 @@ creds = Credentials.from_authorized_user_info(token_data)
 if creds.expired and creds.refresh_token:
     creds.refresh(Request())
     # Save refreshed token for next run
-    with open('/root/.google_workspace_mcp/credentials/google-workspace-user.json', 'w') as f:
+    with open('<gworkspace-creds>/credentials/<user-google-email>.json', 'w') as f:
         json.dump(json.loads(creds.to_json()), f)
 
 service = build('calendar', 'v3', credentials=creds)
@@ -32,7 +32,7 @@ service = build('calendar', 'v3', credentials=creds)
 
 The `Credentials` class should handle auto-refresh, but for cron jobs (long gaps between runs), explicit refresh before use is more reliable.
 
-**Note:** Credentials are stored in `/root/.google_workspace_mcp/credentials/`, NOT in `~/.hermes/`.
+**Note:** Credentials are stored in `<gworkspace-creds>/credentials/`, NOT in `~/.hermes/`.
 
 ## Calendar Discovery
 
@@ -45,13 +45,13 @@ cal_list = service.calendarList().list().execute()
 
 | Calendar ID | Summary | Access Role | Notes |
 |---|---|---|---|
-| `google-workspace-user` | Personal | writer | Primary personal calendar |
-| `mx.indigo.karasu@gmail.com` | mx.indigo.karasu@gmail.com | owner | Currently empty |
+| `<user-google-email>` | Personal | writer | Primary personal calendar |
+| `<third-party-or-user-email>` | <third-party-or-user-email> | owner | Currently empty |
 | `family08350553536598846140@group.calendar.google.com` | Family | writer | Family events (gym, medical, social) |
 | `en.usa#holiday@group.v.calendar.google.com` | Holidays in United States | reader | US holidays |
-| ~~`owner.operator@<employer>.com`~~ | ~~Work~~ | ~~404~~ | **Inaccessible** — returns Not Found |
+| ~~`<account-identity>@<employer>.com`~~ | ~~Work~~ | ~~404~~ | **Inaccessible** — returns Not Found |
 
-**Note:** The work calendar `owner.operator@<employer>.com` was accessible in earlier runs (events.jsonl has entries) but now returns 404. Do not hardcode calendar IDs — always discover via `calendarList().list()`.
+**Note:** The work calendar `<account-identity>@<employer>.com` was accessible in earlier runs (events.jsonl has entries) but now returns 404. Do not hardcode calendar IDs — always discover via `calendarList().list()`.
 
 ## Querying Events
 

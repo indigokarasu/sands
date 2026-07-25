@@ -12,7 +12,7 @@ When the template script `templates/sands_briefing_morning.py` fails due to miss
    ```bash
    hermes mcp_composio_COMPOSIO_MULTI_EXECUTE_TOOL \
      --session_id <session> \
-     --tools '[{"arguments":{"calendarId":"google-workspace-user","maxResults":250,"orderBy":"startTime","showDeleted":false,"singleEvents":true,"timeMax":"'$time_max'","timeMin":"'$time_min'"},"tool_slug":"GOOGLECALENDAR_EVENTS_LIST"}]'
+     --tools '[{"arguments":{"calendarId":"<user-google-email>","maxResults":250,"orderBy":"startTime","showDeleted":false,"singleEvents":true,"timeMax":"'$time_max'","timeMin":"'$time_min'"},"tool_slug":"GOOGLECALENDAR_EVENTS_LIST"}]'
    ```
    Extract the `items` array from the response.
 
@@ -67,7 +67,7 @@ If `GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS` returns empty (no calendars found,
 ```bash
 hermes mcp_composio_COMPOSIO_MULTI_EXECUTE_TOOL \
   --session_id <session> \
-  --tools '[{"arguments":{"calendarId":"google-workspace-user","maxResults":250,"orderBy":"startTime","showDeleted":false,"singleEvents":true,"timeMax":"'$time_max'","timeMin":"'$time_min'"},"tool_slug":"GOOGLECALENDAR_EVENTS_LIST"}]'
+  --tools '[{"arguments":{"calendarId":"<user-google-email>","maxResults":250,"orderBy":"startTime","showDeleted":false,"singleEvents":true,"timeMax":"'$time_max'","timeMin":"'$time_min'"},"tool_slug":"GOOGLECALENDAR_EVENTS_LIST"}]'
 ```
 
 Query each primary calendar from `config.json`, tag events with `source_calendar_id`, then merge and deduplicate.

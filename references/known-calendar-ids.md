@@ -4,19 +4,19 @@ Verified working calendar IDs for this environment (as of 2026-06-17):
 
 | Calendar | ID | Access | Notes |
 |---|---|---|---|
-| Personal | `google-workspace-user` | Read (direct API + MCP + Composio) | The working personal calendar |
-| TheTopaz | `contact@example.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17 |
+| Personal | `<user-google-email>` | Read (direct API + MCP + Composio) | The working personal calendar |
+| TheTopaz | `<third-party-email>` | Read (direct API + Composio) | Works via direct API as of 2026-06-17 |
 | Family | `family08350553536598846140@group.calendar.google.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17; earlier 404 was likely transient |
 | Holidays | `en.usa#holiday@group.v.calendar.google.com` | Read (direct API) | US holidays; all-day events only |
-| Primary (MCP) | `mx.indigo.karasu@gmail.com` | 404 on direct API | Shown by MCP list_calendars but not queryable via direct fallback |
-| Work | `owner.operator@<employer>.com` | FreeBusyReader only | Read-only (free/busy); cannot read event details |
+| Primary (MCP) | `<third-party-or-user-email>` | 404 on direct API | Shown by MCP list_calendars but not queryable via direct fallback |
+| Work | `<account-identity>@<employer>.com` | FreeBusyReader only | Read-only (free/busy); cannot read event details |
 
 ## Recommendation
 
 Set `config.json` `primary_calendar_ids` to explicit working IDs:
 
 ```json
-"primary_calendar_ids": ["google-workspace-user"]
+"primary_calendar_ids": ["<user-google-email>"]
 ```
 
 Do not use `["primary"]` as a calendar ID in `primary_calendar_ids` — it's ambiguous and may resolve differently between MCP and direct fallback paths.
@@ -41,7 +41,7 @@ When direct Calendar API returns 404 for a calendar ID that appears in MCP/Compo
 
 1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
 2. Use `GOOGLECALENDAR_FIND_EVENT` (or `GOOGLECALENDAR_BATCH_EVENTS` for bulk) via `COMPOSIO_MULTI_EXECUTE_TOOL`
-3. Pass the calendar ID as shown in Composio's calendar list (e.g., `contact@example.com`, `family08350553536598846140@group.calendar.google.com`)
+3. Pass the calendar ID as shown in Composio's calendar list (e.g., `<third-party-email>`, `family08350553536598846140@group.calendar.google.com`)
 
 This pattern worked for TheTopaz and Family calendars which returned 404 on direct API but returned events via Composio.
 

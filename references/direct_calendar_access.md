@@ -14,8 +14,8 @@ Every `mcp_google_workspace_*` tool requires a `user_google_email` parameter. Om
 
 ## Prerequisites
 
-- `<hermes-root>/scripts/google_auth.py` — central OAuth helper
-- `/root/.google_workspace_mcp/credentials/<email>.json` — credential files
+- `<hermes-home>/scripts/google_auth.py` — central OAuth helper
+- `<gworkspace-creds>/credentials/<email>.json` — credential files
 - Python packages: `google-auth`, `google-api-python-client`
 
 ## Convenience Wrappers (Preferred)
@@ -24,13 +24,13 @@ The `google_auth.py` module provides convenience wrappers that are simpler than 
 
 ```python
 import sys
-sys.path.insert(0, '<hermes-root>/scripts')
+sys.path.insert(0, '<hermes-home>/scripts')
 from google_auth import get_calendar_service
 
 # Returns a ready-to-use Calendar v3 service object
-calendar = get_calendar_service('google-workspace-user')
+calendar = get_calendar_service('<user-google-email>')
 # Or with fallback:
-calendar = get_calendar_service('mx.indigo.karasu@gmail.com')
+calendar = get_calendar_service('<third-party-or-user-email>')
 ```
 
 Available wrappers:
@@ -44,14 +44,14 @@ Available wrappers:
 
 ```python
 import sys
-sys.path.insert(0, '<hermes-root>/scripts')
+sys.path.insert(0, '<hermes-home>/scripts')
 from google_auth import get_calendar_service
 
-calendar = get_calendar_service('google-workspace-user')
+calendar = get_calendar_service('<user-google-email>')
 
 # Query a single calendar
 result = calendar.events().list(
-    calendarId='google-workspace-user',
+    calendarId='<user-google-email>',
     timeMin='2026-06-04T00:00:00-07:00',  # Use correct DST offset for target date
     timeMax='2026-06-05T00:00:00-07:00',
     singleEvents=True,
@@ -123,7 +123,7 @@ Key rules for cron-mode scripts:
 - Write scripts with `write_file` to `/tmp/`, run with `terminal("python3 /tmp/<script>.py")`
 - Use `write_file` + `terminal` instead of `execute_code` for any multi-step Python
 - For JSON output, write to `/tmp/sands_events.json` and read back with `read_file`
-- Keep scripts self-contained — import paths must be absolute (`<hermes-root>/scripts`)
+- Keep scripts self-contained — import paths must be absolute (`<hermes-home>/scripts`)
 - Use triple-quoted strings carefully — nested quotes in f-strings can cause SyntaxErrors; prefer string concatenation or `.format()` for complex string building
 
 ## Error Handling
@@ -139,21 +139,21 @@ Key rules for cron-mode scripts:
 
 When the default account's OAuth token is revoked (`invalid_grant`), the other credential in the store may still be valid — **and it may be able to read calendars that the dead account owned**.
 
-**Discovered 2026-06-28:** `google-workspace-user`'s token was revoked, but `mx.indigo.karasu@gmail.com`'s token successfully read BOTH `google-workspace-user` AND `family08350553536598846140@group.calendar.google.com` calendars. The indigo account has been granted access to owner's calendar (likely via calendar sharing), so it serves as a complete fallback.
+**Discovered 2026-06-28:** `<user-google-email>`'s token was revoked, but `<third-party-or-user-email>`'s token successfully read BOTH `<user-google-email>` AND `family08350553536598846140@group.calendar.google.com` calendars. The indigo account has been granted access to <operator>'s calendar (likely via calendar sharing), so it serves as a complete fallback.
 
 **Fallback order for cron runs:**
-1. Try default account (`google-workspace-user`) — works when token is valid
-2. On `invalid_grant`, try `mx.indigo.karasu@gmail.com` — works when indigo token is valid AND has calendar sharing permissions
+1. Try default account (`<user-google-email>`) — works when token is valid
+2. On `invalid_grant`, try `<third-party-or-user-email>` — works when indigo token is valid AND has calendar sharing permissions
 3. If both fail, log `degraded: oauth_stale` and report to user
 
 **Pattern:**
 ```python
 import sys
-sys.path.insert(0, '<hermes-root>/scripts')
+sys.path.insert(0, '<hermes-home>/scripts')
 from google_auth import get_calendar_service
 
-calendars_to_query = ['google-workspace-user', 'family08350553536598846140@group.calendar.google.com']
-accounts_to_try = ['google-workspace-user', 'mx.indigo.karasu@gmail.com']
+calendars_to_query = ['<user-google-email>', 'family08350553536598846140@group.calendar.google.com']
+accounts_to_try = ['<user-google-email>', '<third-party-or-user-email>']
 
 calendar = None
 working_account = None
@@ -184,7 +184,7 @@ else:
 
 ## Composio Fallback for 404 Calendar IDs (Added 2026-06-15)
 
-When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., TheTopaz `contact@example.com`, Family `family08350553536598846140@group.calendar.google.com`), use Composio as an alternative query path:
+When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., TheTopaz `<third-party-email>`, Family `family08350553536598846140@group.calendar.google.com`), use Composio as an alternative query path:
 
 1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
 2. Use `GOOGLECALENDAR_FIND_EVENT` via `COMPOSIO_MULTI_EXECUTE_TOOL`
