@@ -14,11 +14,11 @@ If unavailable, Sands surfaces a warning and asks for a manual estimate instead 
 
 Sands tests these tokens in order until one works:
 
-1. `/root/.google_workspace_mcp/credentials/google-workspace-user.json` — has full calendar scope
-2. `/root/.google_workspace_mcp/credentials/contact@example.com` — fallback
+1. `<gworkspace-creds>/credentials/<user-google-email>.json` — has full calendar scope
+2. `<gworkspace-creds>/credentials/<third-party-or-user-email>.json` — fallback
 
 These use the central `google_auth` helper which auto-refreshes.
 
 ## Token Refresh Pattern
 
-The OAuth credential files contain `client_id`, `client_secret`, `refresh_token`, and `token_uri`. Use the central `google_auth` helper at `<hermes-root>/scripts/google_auth.py` for automatic token refresh.
+The OAuth credential files contain `client_id`, `client_secret`, `refresh_token`, and `token_uri`. Use the central `google_auth` helper at `<hermes-home>/scripts/google_auth.py` for automatic token refresh.

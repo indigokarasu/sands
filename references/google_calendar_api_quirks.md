@@ -18,7 +18,7 @@ After these required fields, add only the fields you want to change (e.g., `desc
 ```
 manage_event(
   action="update",
-  calendar_id="google-workspace-user",
+  calendar_id="<user-google-email>",
   event_id="7l5h00p67qsahhcahgf1hg3bg4",
   start_time="2026-05-22T10:00:00-07:00",
   end_time="2026-05-22T12:00:00-07:00",
