@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """
 Sands Morning Briefing Template (cron-compatible)
 
@@ -25,18 +26,18 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, '<hermes-root>/scripts')
+sys.path.insert(0, 'os.path.expanduser("~/.hermes")/scripts')
 from google_auth_mcp import get_service
 
 # =============================================================================
 # CONFIGURATION — update these to match config.json
 # =============================================================================
 CALENDAR_IDS = [
-    "google-workspace-user",
+    os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"),
     "family08350553536598846140@group.calendar.google.com"
 ]
 WORK_CALENDAR_ID = ""  # leave empty if no work calendar
-ACCOUNTS_TO_TRY = ['google-workspace-user', 'mx.indigo.karasu@gmail.com']
+ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), 'mx.indigo.karasu@gmail.com']
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
 
 # =============================================================================
