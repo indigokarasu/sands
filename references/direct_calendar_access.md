@@ -14,7 +14,11 @@ Every `mcp_google_workspace_*` tool requires a `user_google_email` parameter. Om
 
 ## Prerequisites
 
+<<<<<<< Updated upstream
 - `<hermes-home>/scripts/google_auth.py` — central OAuth helper
+=======
+- `~/.hermes/scripts/google_auth.py` — central OAuth helper
+>>>>>>> Stashed changes
 - `<gworkspace-creds>/credentials/<email>.json` — credential files
 - Python packages: `google-auth`, `google-api-python-client`
 
@@ -24,13 +28,21 @@ The `google_auth.py` module provides convenience wrappers that are simpler than 
 
 ```python
 import sys
+<<<<<<< Updated upstream
 sys.path.insert(0, '<hermes-home>/scripts')
+=======
+sys.path.insert(0, '~/.hermes/scripts')
+>>>>>>> Stashed changes
 from google_auth import get_calendar_service
 
 # Returns a ready-to-use Calendar v3 service object
 calendar = get_calendar_service('<user-google-email>')
 # Or with fallback:
+<<<<<<< Updated upstream
 calendar = get_calendar_service('<third-party-or-user-email>')
+=======
+calendar = get_calendar_service('<agent-email>')
+>>>>>>> Stashed changes
 ```
 
 Available wrappers:
@@ -44,7 +56,11 @@ Available wrappers:
 
 ```python
 import sys
+<<<<<<< Updated upstream
 sys.path.insert(0, '<hermes-home>/scripts')
+=======
+sys.path.insert(0, '~/.hermes/scripts')
+>>>>>>> Stashed changes
 from google_auth import get_calendar_service
 
 calendar = get_calendar_service('<user-google-email>')
@@ -123,7 +139,11 @@ Key rules for cron-mode scripts:
 - Write scripts with `write_file` to `/tmp/`, run with `terminal("python3 /tmp/<script>.py")`
 - Use `write_file` + `terminal` instead of `execute_code` for any multi-step Python
 - For JSON output, write to `/tmp/sands_events.json` and read back with `read_file`
+<<<<<<< Updated upstream
 - Keep scripts self-contained — import paths must be absolute (`<hermes-home>/scripts`)
+=======
+- Keep scripts self-contained — import paths must be absolute (`~/.hermes/scripts`)
+>>>>>>> Stashed changes
 - Use triple-quoted strings carefully — nested quotes in f-strings can cause SyntaxErrors; prefer string concatenation or `.format()` for complex string building
 
 ## Error Handling
@@ -139,21 +159,37 @@ Key rules for cron-mode scripts:
 
 When the default account's OAuth token is revoked (`invalid_grant`), the other credential in the store may still be valid — **and it may be able to read calendars that the dead account owned**.
 
+<<<<<<< Updated upstream
 **Discovered 2026-06-28:** `<user-google-email>`'s token was revoked, but `<third-party-or-user-email>`'s token successfully read BOTH `<user-google-email>` AND `family08350553536598846140@group.calendar.google.com` calendars. The indigo account has been granted access to <operator>'s calendar (likely via calendar sharing), so it serves as a complete fallback.
 
 **Fallback order for cron runs:**
 1. Try default account (`<user-google-email>`) — works when token is valid
 2. On `invalid_grant`, try `<third-party-or-user-email>` — works when indigo token is valid AND has calendar sharing permissions
+=======
+**Discovered 2026-06-28:** `<user-google-email>`'s token was revoked, but `<agent-email>`'s token successfully read BOTH `<user-google-email>` AND `family08350553536598846140@group.calendar.google.com` calendars. The indigo account has been granted access to <operator>'s calendar (likely via calendar sharing), so it serves as a complete fallback.
+
+**Fallback order for cron runs:**
+1. Try default account (`<user-google-email>`) — works when token is valid
+2. On `invalid_grant`, try `<agent-email>` — works when indigo token is valid AND has calendar sharing permissions
+>>>>>>> Stashed changes
 3. If both fail, log `degraded: oauth_stale` and report to user
 
 **Pattern:**
 ```python
 import sys
+<<<<<<< Updated upstream
 sys.path.insert(0, '<hermes-home>/scripts')
 from google_auth import get_calendar_service
 
 calendars_to_query = ['<user-google-email>', 'family08350553536598846140@group.calendar.google.com']
 accounts_to_try = ['<user-google-email>', '<third-party-or-user-email>']
+=======
+sys.path.insert(0, '~/.hermes/scripts')
+from google_auth import get_calendar_service
+
+calendars_to_query = ['<user-google-email>', 'family08350553536598846140@group.calendar.google.com']
+accounts_to_try = ['<user-google-email>', '<agent-email>']
+>>>>>>> Stashed changes
 
 calendar = None
 working_account = None
@@ -184,7 +220,7 @@ else:
 
 ## Composio Fallback for 404 Calendar IDs (Added 2026-06-15)
 
-When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., TheTopaz `<third-party-email>`, Family `family08350553536598846140@group.calendar.google.com`), use Composio as an alternative query path:
+When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., <third-party-name> `<third-party-email>`, Family `family08350553536598846140@group.calendar.google.com`), use Composio as an alternative query path:
 
 1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
 2. Use `GOOGLECALENDAR_FIND_EVENT` via `COMPOSIO_MULTI_EXECUTE_TOOL`

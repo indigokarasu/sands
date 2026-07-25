@@ -46,12 +46,21 @@ cal_list = service.calendarList().list().execute()
 | Calendar ID | Summary | Access Role | Notes |
 |---|---|---|---|
 | `<user-google-email>` | Personal | writer | Primary personal calendar |
+<<<<<<< Updated upstream
 | `<third-party-or-user-email>` | <third-party-or-user-email> | owner | Currently empty |
 | `family08350553536598846140@group.calendar.google.com` | Family | writer | Family events (gym, medical, social) |
 | `en.usa#holiday@group.v.calendar.google.com` | Holidays in United States | reader | US holidays |
 | ~~`<account-identity>@<employer>.com`~~ | ~~Work~~ | ~~404~~ | **Inaccessible** — returns Not Found |
 
 **Note:** The work calendar `<account-identity>@<employer>.com` was accessible in earlier runs (events.jsonl has entries) but now returns 404. Do not hardcode calendar IDs — always discover via `calendarList().list()`.
+=======
+| `<agent-email>` | <agent-email> | owner | Currently empty |
+| `family08350553536598846140@group.calendar.google.com` | Family | writer | Family events (gym, medical, social) |
+| `en.usa#holiday@group.v.calendar.google.com` | Holidays in United States | reader | US holidays |
+| ~~`<user-handle>@<employer>.com`~~ | ~~Work~~ | ~~404~~ | **Inaccessible** — returns Not Found |
+
+**Note:** The work calendar `<user-handle>@<employer>.com` was accessible in earlier runs (events.jsonl has entries) but now returns 404. Do not hardcode calendar IDs — always discover via `calendarList().list()`.
+>>>>>>> Stashed changes
 
 ## Querying Events
 

@@ -28,8 +28,12 @@ use **direct Python OAuth** + `write_file` + `terminal`:
 
 ```
 Step 1: Write a query+classify script to /tmp/sands_chronicle_query.py
+<<<<<<< Updated upstream
   - Import google_auth_mcp.get_service from <hermes-home>/scripts
-  - Query all 3 calendars (personal, thetopaz, family) via Calendar API v3
+=======
+  - Import google_auth_mcp.get_service from ~/.hermes/scripts
+>>>>>>> Stashed changes
+  - Query all 3 calendars (personal, <third-party-name>, family) via Calendar API v3
   - Time window: 18 months back → 6 months forward from today
   - singleEvents=True, orderBy='startTime', maxResults=250, paginate
   - Deduplicate by summary + start time across calendars
@@ -43,7 +47,11 @@ Step 3: Extract events array (wrapper outputs {events, errors, stats})
   terminal("python3 -c \"import json; d=json.load(open('/tmp/sands_events_for_chronicle.json')); json.dump(d['events'], open('/tmp/sands_events_clean.json','w'), indent=2)\"")
 
 Step 4: Run ingest script
+<<<<<<< Updated upstream
   terminal("python3 <hermes-home>/scripts/sands_chronicle_sync.py /tmp/sands_events_clean.json")
+=======
+  terminal("python3 ~/.hermes/scripts/sands_chronicle_sync.py /tmp/sands_events_clean.json")
+>>>>>>> Stashed changes
 
 Step 5: Update config.json last_chronicle_sync timestamp + count
   - last_chronicle_sync = current timestamp
@@ -81,7 +89,7 @@ timeMin/timeMax. June = PDT (-07:00), January = PST (-08:00).
   "confidence": 0.9,                 // 0.0–1.0
   "location": "...",                 // Raw location string (or null)
   "source_summary": "...",
-  "source_calendar": "personal|thetopaz|family"            // Original calendar event title
+  "source_calendar": "personal|<third-party-name>|family"            // Original calendar event title
 }]
 ```
 
@@ -91,14 +99,23 @@ The ingest script deactivates all prior `external_sands` facts for the predicate
 
 ## Chronicle DB
 
+<<<<<<< Updated upstream
 `<hermes-home>/profiles/indigo/commons/db/chronicle/chronicle.db`
 Script: `<hermes-home>/scripts/sands_chronicle_sync.py`
+=======
+`~/.hermes/profiles/indigo/commons/db/chronicle/chronicle.db`
+Script: `~/.hermes/scripts/sands_chronicle_sync.py`
+>>>>>>> Stashed changes
 
 ## Auth Note: Cron vs. Interactive Sessions
 
 **Cron jobs (isolated sessions):** Use **direct Python OAuth** via `google_auth_mcp.get_service`.
 MCP tools (`mcp_google_workspace_get_events`) are NOT available in isolated cron sessions.
+<<<<<<< Updated upstream
 The direct fallback at `<hermes-home>/scripts/google_auth.py` reads the same credential store
+=======
+The direct fallback at `~/.hermes/scripts/google_auth.py` reads the same credential store
+>>>>>>> Stashed changes
 (`<gworkspace-creds>/credentials/`) and works reliably in cron mode.
 
 **Interactive sessions:** Can use either MCP tools or direct Python. Both auth paths work.
@@ -131,7 +148,14 @@ Keyword-based classification produces false positives from overlapping vocabular
 | Calendar | ID |
 |---|---|
 | Personal | `<user-google-email>` |
-| TheTopaz | `<third-party-email>` |
+<<<<<<< Updated upstream
+| <third-party-name> | `<third-party-email>` |
 | Family | `family08350553536598846140@group.calendar.google.com` |
 
 Skip: Work (`<account-identity>@<employer>.com`) — read-only free/busy only, no event details.
+=======
+| <third-party-name> | `<third-party-email>` |
+| Family | `family08350553536598846140@group.calendar.google.com` |
+
+Skip: Work (`<user-handle>@<employer>.com`) — read-only free/busy only, no event details.
+>>>>>>> Stashed changes
