@@ -41,7 +41,7 @@ PRIMARY_CALENDARS = config['primary_calendar_ids']
 TZ = ZoneInfo(config.get('default_timezone', 'America/Los_Angeles'))
 
 # --- Multi-account fallback ---
-ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), 'mx.indigo.karasu@gmail.com']
+ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]
 
 calendar = None
 working_account = None
