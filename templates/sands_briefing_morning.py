@@ -37,7 +37,7 @@ CALENDAR_IDS = [
     "family08350553536598846140@group.calendar.google.com"
 ]
 WORK_CALENDAR_ID = ""  # leave empty if no work calendar
-ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), 'mx.indigo.karasu@gmail.com']
+ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
 
 # =============================================================================
