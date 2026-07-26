@@ -8,11 +8,7 @@ Calendar management. Use for viewing, querying, creating, modifying, deleting, o
 **Version:** 2.2.0
 **Type:** 
 **Layer:** productivity
-<<<<<<< Updated upstream
-**Author:** Indigo Karasu
-=======
 **Author:** <agent-name>
->>>>>>> Stashed changes
 
 ---
 

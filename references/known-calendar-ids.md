@@ -5,19 +5,11 @@ Verified working calendar IDs for this environment (as of 2026-06-17):
 | Calendar | ID | Access | Notes |
 |---|---|---|---|
 | Personal | `<user-google-email>` | Read (direct API + MCP + Composio) | The working personal calendar |
-<<<<<<< Updated upstream
-| <third-party-name> | `<third-party-email>` | Read (direct API + Composio) | Works via direct API as of 2026-06-17 |
-| Family | `family08350553536598846140@group.calendar.google.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17; earlier 404 was likely transient |
-| Holidays | `en.usa#holiday@group.v.calendar.google.com` | Read (direct API) | US holidays; all-day events only |
-| Primary (MCP) | `<third-party-or-user-email>` | 404 on direct API | Shown by MCP list_calendars but not queryable via direct fallback |
-| Work | `<account-identity>@<employer>.com` | FreeBusyReader only | Read-only (free/busy); cannot read event details |
-=======
 | <third-party-name> | `<third-party-email>` | Read (direct API + Composio) | Works via direct API as of 2026-06-17 |
 | Family | `family08350553536598846140@group.calendar.google.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17; earlier 404 was likely transient |
 | Holidays | `en.usa#holiday@group.v.calendar.google.com` | Read (direct API) | US holidays; all-day events only |
 | Primary (MCP) | `<agent-email>` | 404 on direct API | Shown by MCP list_calendars but not queryable via direct fallback |
 | Work | `<user-handle>@<employer>.com` | FreeBusyReader only | Read-only (free/busy); cannot read event details |
->>>>>>> Stashed changes
 
 ## Recommendation
 
