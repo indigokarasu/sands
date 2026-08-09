@@ -28,12 +28,12 @@ if set(sys.argv[1:]) & _HELP_ARGS:
     print((__doc__ or "").strip() or "Usage: python3 conflict_scan_template.py")
     sys.exit(0)
 
-sys.path.insert(0, 'os.path.expanduser("~/.hermes")/scripts')
+sys.path.insert(0, os.path.expanduser("~/.hermes") + "/scripts")
 from google_auth_mcp import get_service
 
 
 # --- Config ---
-CONFIG_PATH = 'os.path.expanduser("~/indigo-repo")/commons/data/ocas-sands/config.json'
+CONFIG_PATH = os.path.expanduser("~/indigo-repo") + "/commons/data/ocas-sands/config.json"
 with open(CONFIG_PATH) as f:
     config = json.load(f)
 
