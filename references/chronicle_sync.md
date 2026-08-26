@@ -132,6 +132,6 @@ Keyword-based classification produces false positives from overlapping vocabular
 |---|---|
 | Personal | `<user-google-email>` |
 | <third-party-name> | `<third-party-email>` |
-| Family | `family08350553536598846140@group.calendar.google.com` |
+| Family | `<family-calendar-id>@group.calendar.google.com` |
 
 Skip: Work (`<user-handle>@<employer>.com`) — read-only free/busy only, no event details.

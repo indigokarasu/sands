@@ -28,7 +28,7 @@ templates (`templates/sands_briefing_morning.py`, `templates/sands_briefing_even
 ```
 CALENDAR_IDS = [
     "<user-google-email>",
-    "family08350553536598846140@group.calendar.google.com"
+    "<family-calendar-id>@group.calendar.google.com"
 ]
 ACCOUNTS_TO_TRY = ['<user-google-email>', '<agent-email>']
 ```
@@ -43,5 +43,5 @@ calendar set; config is a secondary/legacy record.
 **Actions:**
 - When you need the real calendar set for a run, trust the template's `CALENDAR_IDS`, not `config.json primary_calendar_ids`.
 - Keep them in sync: if you add/remove a calendar, update BOTH the template `CALENDAR_IDS` AND `config.json primary_calendar_ids`. Note this in the edit.
-- The canonical Family calendar ID is `family08350553536598846140@group.calendar.google.com` (see `references/known-calendar-ids.md`).
+- The canonical Family calendar ID is `<family-calendar-id>@group.calendar.google.com` (see `references/known-calendar-ids.md`).
 - Per `direct_calendar_access.md`, the `<agent-email>` account can read BOTH the <operator> and Family calendars (sharing grant), so it serves as full fallback when the <operator> token is dead.

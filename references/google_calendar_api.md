@@ -47,7 +47,7 @@ cal_list = service.calendarList().list().execute()
 |---|---|---|---|
 | `<user-google-email>` | Personal | writer | Primary personal calendar |
 | `<agent-email>` | <agent-email> | owner | Currently empty |
-| `family08350553536598846140@group.calendar.google.com` | Family | writer | Family events (gym, medical, social) |
+| `<family-calendar-id>@group.calendar.google.com` | Family | writer | Family events (gym, medical, social) |
 | `en.usa#holiday@group.v.calendar.google.com` | Holidays in United States | reader | US holidays |
 | ~~`<user-handle>@<employer>.com`~~ | ~~Work~~ | ~~404~~ | **Inaccessible** — returns Not Found |
 
