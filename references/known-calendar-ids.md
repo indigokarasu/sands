@@ -6,7 +6,7 @@ Verified working calendar IDs for this environment (as of 2026-06-17):
 |---|---|---|---|
 | Personal | `<user-google-email>` | Read (direct API + MCP + Composio) | The working personal calendar |
 | <third-party-name> | `<third-party-email>` | Read (direct API + Composio) | Works via direct API as of 2026-06-17 |
-| Family | `family08350553536598846140@group.calendar.google.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17; earlier 404 was likely transient |
+| Family | `<family-calendar-id>@group.calendar.google.com` | Read (direct API + Composio) | Works via direct API as of 2026-06-17; earlier 404 was likely transient |
 | Holidays | `en.usa#holiday@group.v.calendar.google.com` | Read (direct API) | US holidays; all-day events only |
 | Primary (MCP) | `<agent-email>` | 404 on direct API | Shown by MCP list_calendars but not queryable via direct fallback |
 | Work | `<user-handle>@<employer>.com` | FreeBusyReader only | Read-only (free/busy); cannot read event details |
@@ -41,8 +41,8 @@ When direct Calendar API returns 404 for a calendar ID that appears in MCP/Compo
 
 1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
 2. Use `GOOGLECALENDAR_FIND_EVENT` (or `GOOGLECALENDAR_BATCH_EVENTS` for bulk) via `COMPOSIO_MULTI_EXECUTE_TOOL`
-3. Pass the calendar ID as shown in Composio's calendar list (e.g., `<third-party-email>`, `family08350553536598846140@group.calendar.google.com`)
+3. Pass the calendar ID as shown in Composio's calendar list (e.g., `<third-party-email>`, `<family-calendar-id>@group.calendar.google.com`)
 
 This pattern worked for <third-party-name> and Family calendars which returned 404 on direct API but returned events via Composio.
 
-**Key difference**: Composio's calendar list shows `family08350553536598846140@group.calendar.google.com` (no `.v`), while the earlier known-good table showed `@group.v.calendar.google.com`. Use the ID exactly as returned by Composio's list_calendars.
+**Key difference**: Composio's calendar list shows `<family-calendar-id>@group.calendar.google.com` (no `.v`), while the earlier known-good table showed `@group.v.calendar.google.com`. Use the ID exactly as returned by Composio's list_calendars.

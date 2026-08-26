@@ -34,7 +34,7 @@ from google_auth_mcp import get_service
 # =============================================================================
 CALENDAR_IDS = [
     os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"),
-    "family08350553536598846140@group.calendar.google.com"
+    "<family-calendar-id>@group.calendar.google.com"
 ]
 WORK_CALENDAR_ID = ""  # leave empty if no work calendar
 ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]

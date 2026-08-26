@@ -139,7 +139,7 @@ Key rules for cron-mode scripts:
 
 When the default account's OAuth token is revoked (`invalid_grant`), the other credential in the store may still be valid — **and it may be able to read calendars that the dead account owned**.
 
-**Discovered 2026-06-28:** `<user-google-email>`'s token was revoked, but `<agent-email>`'s token successfully read BOTH `<user-google-email>` AND `family08350553536598846140@group.calendar.google.com` calendars. The indigo account has been granted access to <operator>'s calendar (likely via calendar sharing), so it serves as a complete fallback.
+**Discovered 2026-06-28:** `<user-google-email>`'s token was revoked, but `<agent-email>`'s token successfully read BOTH `<user-google-email>` AND `<family-calendar-id>@group.calendar.google.com` calendars. The indigo account has been granted access to <operator>'s calendar (likely via calendar sharing), so it serves as a complete fallback.
 
 **Fallback order for cron runs:**
 1. Try default account (`<user-google-email>`) — works when token is valid
@@ -152,7 +152,7 @@ import sys
 sys.path.insert(0, '<hermes-home>/scripts')
 from google_auth import get_calendar_service
 
-calendars_to_query = ['<user-google-email>', 'family08350553536598846140@group.calendar.google.com']
+calendars_to_query = ['<user-google-email>', '<family-calendar-id>@group.calendar.google.com']
 accounts_to_try = ['<user-google-email>', '<third-party-or-user-email>']
 
 calendar = None
@@ -184,7 +184,7 @@ else:
 
 ## Composio Fallback for 404 Calendar IDs (Added 2026-06-15)
 
-When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., <third-party-name> `<third-party-email>`, Family `family08350553536598846140@group.calendar.google.com`), use Composio as an alternative query path:
+When direct Calendar API returns 404 for a calendar ID that appears in MCP/Composio listings (e.g., <third-party-name> `<third-party-email>`, Family `<family-calendar-id>@group.calendar.google.com`), use Composio as an alternative query path:
 
 1. Use `COMPOSIO_SEARCH_TOOLS` with use_case "list Google Calendar events" to discover available tools
 2. Use `GOOGLECALENDAR_FIND_EVENT` via `COMPOSIO_MULTI_EXECUTE_TOOL`
