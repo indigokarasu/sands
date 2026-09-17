@@ -9,7 +9,10 @@ includes:
 - scripts/**
 metadata:
   author: Indigo Karasu (indigokarasu)
-  version: 2.2.0
+  version: "2.3.0"
+  activation:
+    requires_tools: ["workspace_mcp"]
+    fallback_for_tools: ["google_api_fallback"]
   hermes:
     category: productivity
     tags:

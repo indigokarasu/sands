@@ -1,5 +1,11 @@
 ## [2.1.4] - 2026-04-12
 
+## [2.3.0] - 2026-09-16
+
+### Changed
+- **Activation & fallback declarations** — added `metadata.activation.requires_tools: ["workspace_mcp"]` and `fallback_for_tools: ["google_api_fallback"]` to SKILL.md frontmatter per `spec-ocas-skill-improvements.md`.
+
+
 ### Added
 - Briefing time window definitions: morning scope = today, evening scope = tomorrow (timeMin/timeMax)
 - OAuth staleness note: re-authenticate on auth error rather than suppressing
