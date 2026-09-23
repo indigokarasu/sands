@@ -242,3 +242,9 @@ public
 | `references/cron_persistence.md` | Unicode-safe JSONL persistence in cron mode (emoji in titles) + why `config.json primary_calendar_ids` drifts from the briefing template's hardcoded calendar list |
 | `templates/sands_briefing_morning.py` | Reusable cron-compatible morning briefing script — multi-account fallback, dedup, conflict detection, prep signals |
 | `references/mcp_fallback_briefing.md` | When encountering dependency errors with the morning briefing script |
+
+## Support Files
+
+- `references/google_calendar_api.md` — Google Calendar API Implementation
+- `references/oauth_recovery.md` — OAuth Recovery Escalation Patterns
+- `scripts/update.sh`
