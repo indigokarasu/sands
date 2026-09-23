@@ -65,7 +65,7 @@ Sands does not own: communications (Dispatch), travel reservations (Voyage), gen
 
 ## Ontology types
 
-Sands works with these types from `spec-ocas-ontology.md`:
+Sands works with these types from [[`spec-ocas-ontology.md` ⚠️ Pending spec] ⚠️ Pending spec — not yet authored]:
 
 - **Place** — event locations resolved via Google Places API during `sands.logistics.travel`. Location data retained in `decisions.jsonl` as decision context only.
 - **Event** (Concept subclass) — calendar events managed through Google Calendar, not Chronicle.
