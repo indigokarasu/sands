@@ -34,11 +34,11 @@ from google_auth_mcp import get_service
 # CONFIGURATION — mirror config.json primary_calendar_ids
 # =============================================================================
 CALENDAR_IDS = [
-    "OPERATOR_EMAIL",
-    "<family-calendar-id>@group.calendar.google.com"
+    os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"),
+    os.environ.get("OCAS_FAMILY_CALENDAR_ID", "<family-calendar-id>@group.calendar.google.com"),
 ]
 WORK_CALENDAR_ID = ""
-ACCOUNTS_TO_TRY = ['OPERATOR_EMAIL', os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]
+ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
 
 # =============================================================================
