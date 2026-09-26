@@ -1,4 +1,5 @@
 ---
+warning: 'FALSE TRIGGER RISK: Has had 62% false trigger rate on interactive loads (16/26 auto). This skill is calendar management — not for general scheduling queries, time lookups, or when a dedicated calendar skill exists. Updated 2026-09-25: rate decreased from 81% (21/26).'
 name: ocas-sands
 license: MIT
 description: 'Calendar management. Use for viewing, querying, creating, modifying, deleting, or analyzing calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments, recurring event management, and daily schedule briefings for Vesper. Do not use for reminders without calendar context, task management, or general time/timezone questions.'
