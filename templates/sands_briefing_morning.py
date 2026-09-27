@@ -18,15 +18,41 @@ Usage:
     3. Run: python3 /tmp/sands_briefing_morning.py
     4. Read JSON from /tmp/sands_morning_briefing.json
 
+Flags:
+    --help, -h   Print this help and exit 0 WITHOUT querying any calendar.
+    --dry-run     Query calendars and print the summary, but do NOT write
+                  /tmp/sands_morning_briefing.json or the payload marker.
+
+Environment:
+    OCAS_OPERATOR_EMAIL, OCAS_AGENT_EMAIL   accounts to try, in order
+    OCAS_FAMILY_CALENDAR_ID                  family calendar id
+    HERMES_HOME                              defaults to ~/.hermes
+
 Output:
     - /tmp/sands_morning_briefing.json — full Vesper emit payload (suggested_follow_up)
-    - stdout: human-readable summary line
+    - stdout: human-readable summary line, then ---BRIEFING_PAYLOAD_JSON--- + JSON
+
+Exit codes:
+    0  briefing generated, or --help printed
+    1  all accounts failed auth (degraded; no payload, no JSON written)
+    2  usage error
 """
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, 'os.path.expanduser("~/.hermes")/scripts')
+_HELP_ARGS = {"--help", "-h"}
+_DRY_RUN = "--dry-run" in sys.argv[1:]
+# Guard BEFORE any import with side effects or network/auth work, so probing
+# --help can never trigger a live calendar query.
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 sands_briefing_morning.py")
+    sys.exit(0)
+if _DRY_RUN:
+    sys.argv = [sys.argv[0]] + [a for a in sys.argv[1:] if a != "--dry-run"]
+
+sys.path.insert(0, os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes")) + "/scripts")
 from google_auth_mcp import get_service
 
 # =============================================================================
@@ -41,15 +67,29 @@ ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com")
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
 
 # =============================================================================
-# DATE SETUP (auto-detects PDT from system timezone)
+# DATE SETUP — offset derived per TARGET date via zoneinfo, never hardcoded.
+# The SKILL.md DST gotcha applies to these templates too: an event window built
+# with the wrong -07:00/-08:00 offset returns no events or wrong-day events.
 # =============================================================================
-PDT = timezone(timedelta(hours=-7))
-now = datetime.now(PDT)
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo(os.environ.get("OCAS_TIMEZONE", "America/Los_Angeles"))
+now = datetime.now(LOCAL_TZ)
 today_str = now.strftime('%Y-%m-%d')
 tomorrow_str = (now + timedelta(days=1)).strftime('%Y-%m-%d')
 
-time_min = f"{today_str}T00:00:00-07:00"
-time_max = f"{tomorrow_str}T00:00:00-07:00"
+
+def _offset_for(date_str: str) -> str:
+    """RFC3339 UTC offset for midnight of date_str in the target timezone."""
+    off = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=LOCAL_TZ).utcoffset()
+    total = int(off.total_seconds())
+    sign = '+' if total >= 0 else '-'
+    total = abs(total)
+    return f"{sign}{total // 3600:02d}:{(total % 3600) // 60:02d}"
+
+
+time_min = f"{today_str}T00:00:00{_offset_for(today_str)}"
+time_max = f"{tomorrow_str}T00:00:00{_offset_for(tomorrow_str)}"
 
 # =============================================================================
 # OAUTH: FIND WORKING ACCOUNT (multi-account fallback)
@@ -205,8 +245,8 @@ for ev in all_events:
     if is_timed:
         start_dt = fromisoformat_safe(start_data['dateTime'])
         end_dt = fromisoformat_safe(end_data['dateTime'])
-        start_local = start_dt.astimezone(PDT)
-        end_local = end_dt.astimezone(PDT)
+        start_local = start_dt.astimezone(LOCAL_TZ)
+        end_local = end_dt.astimezone(LOCAL_TZ)
         start_hhmm = start_local.strftime('%H:%M')
         end_hhmm = end_local.strftime('%H:%M')
         sort_key = f"{start_local.hour:02d}{start_local.minute:02d}"
@@ -411,8 +451,11 @@ payload = {
     'prep_items_count': prep_count
 }
 
-with open('/tmp/sands_morning_briefing.json', 'w') as f:
-    json.dump(payload, f, indent=2)
+if _DRY_RUN:
+    print("(dry-run) /tmp/sands_morning_briefing.json NOT written")
+else:
+    with open('/tmp/sands_morning_briefing.json', 'w') as f:
+        json.dump(payload, f, indent=2)
 
 print(f"\n{'='*55}")
 print(f"MORNING BRIEFING — {today_display}")

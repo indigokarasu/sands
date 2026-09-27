@@ -53,7 +53,7 @@
 
 - **Config missing `last_evening_brief` field** — The default config template only includes `last_morning_brief` and `last_conflict_scan`. Evening brief runs should update a `last_evening_brief` timestamp in config to enable accurate gap detection. Without it, the evening brief cadence can't be tracked. Add this field to config after any successful evening brief run.
 
-- **Reference files may be empty** — `references/briefing_windows.md`, `references/vesper_emit_format.md`, and `references/preparation_signals.md` are currently 0 bytes. Do not block on reading them; proceed with the defaults documented in this SKILL.md (morning brief = today's events, evening brief = tomorrow's events, both in `America/Los_Angeles`).
+- **Reference files were briefly 0 bytes** — `references/briefing_windows.md`, `references/vesper_emit_format.md`, and `references/preparation_signals.md` shipped empty. They are now populated. If one reads as 0 bytes again, proceed with the defaults in SKILL.md (morning = today's events, evening = tomorrow's, `America/Los_Angeles`) and re-create the file — don't block the run on it.
 
 ## Config Initialization
 
@@ -62,3 +62,19 @@
 ## Undo
 
 - **Undo window is 24 hours and non-recurring** — Event undo is only available within 24 hours of the original action. Recurring event scope changes cannot be undone at all.
+
+## Script Execution
+
+- **Never probe a Sands script with `--help` if the guard is missing** — `templates/sands_briefing_morning.py` and `templates/sands_briefing_evening.py` have no top-level `if __name__ == "__main__":` block; they run a live calendar query on import and write `/tmp/sands_{morning,evening}_briefing.json`. Both now carry a pre-import `--help` guard and a `--dry-run` flag that skips the JSON write. Use `--dry-run` for a real run you don't want persisted.
+- **Both briefing templates previously built the query window with a hardcoded `-07:00`** — wrong for any PST target date (roughly Nov–Mar), shifting the window by an hour and returning no events or wrong-day events. They now derive the offset per TARGET date via `zoneinfo` from `OCAS_TIMEZONE` (default `America/Los_Angeles`). Any new script doing RFC3339 window math must do the same.
+- **Sands commands are not shell commands** — `sands.logistics.travel` and friends are reached through the interactive `/` menu (see `references/interactive-menu.md`), not by invoking them in a shell. Direct shell invocation yields "command not found."
+
+## Overlap & Edge Cases
+
+- **Overlapping events = no travel blocks, but flag the conflict** — when event B starts before event A ends, `gap_minutes` is negative and there is no gap to fill. Use `not_activity_reason: events_overlap_no_gap` in evidence and set `overlap_detected` so the evening brief and conflict scan can reference it. Never create a travel block for an overlap.
+- **Naive `HH:MM` math hides real midnight-crossing conflicts** — an event ending at `00:00` (e.g. `19:30`→`00:00`) yields a *negative* overlap (`0 - 1170`). Add 1440 whenever `end_min <= start_min` before computing overlaps or busy spans. `scripts/conflict_scan_template.py` uses UTC-aware overlap detection and is unaffected; any new minute-based code must apply the guard itself.
+
+## State
+
+- **`config.json` `auth_status` goes stale after a successful fallback** — when the primary token is dead but the fallback account succeeds, the field may still read `MCP_ONLY` or `STALE_OAUTH`. Reset it to `OK` after any successful direct-Python fallback; it describes the *system's* reachability, not one account's token.
+- **Unicode-safe JSONL append (emoji in titles)** — event titles routinely contain emoji. `append_jsonl.py` takes the record as a shell-quoted positional arg, so JSON with emoji or nested quotes gets mangled by the shell. For those records, `write_file` a small Python snippet that appends `json.dumps(record)` and asserts the line count grew by one, then run it. See `references/cron_persistence.md`.

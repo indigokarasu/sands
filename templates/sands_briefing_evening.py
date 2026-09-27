@@ -22,12 +22,42 @@ in the 2026-07-23 cron run.
 
 Usage:
     python3 templates/sands_briefing_evening.py
+
+Flags:
+    --help, -h   Print this help and exit 0 WITHOUT querying any calendar.
+    --dry-run     Query calendars and print the summary, but do NOT write
+                  /tmp/sands_evening_briefing.json or the payload marker.
+
+Environment:
+    OCAS_OPERATOR_EMAIL, OCAS_AGENT_EMAIL   accounts to try, in order
+    OCAS_FAMILY_CALENDAR_ID                  family calendar id
+    HERMES_HOME                              defaults to ~/.hermes
+
+Output:
+    - /tmp/sands_evening_briefing.json — full Vesper InsightProposal payload
+    - stdout: summary, then ---BRIEFING_PAYLOAD_JSON--- + JSON
+
+Exit codes:
+    0  briefing generated, or --help printed
+    1  all accounts failed auth (degraded; no payload, no JSON written)
+    2  usage error
 """
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, os.path.expanduser("~/.hermes/scripts"))
+_HELP_ARGS = {"--help", "-h"}
+_DRY_RUN = "--dry-run" in sys.argv[1:]
+# Guard BEFORE any import with side effects or network/auth work, so probing
+# --help can never trigger a live calendar query or write the brief JSON.
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip() or "Usage: python3 sands_briefing_evening.py")
+    sys.exit(0)
+if _DRY_RUN:
+    sys.argv = [sys.argv[0]] + [a for a in sys.argv[1:] if a != "--dry-run"]
+
+sys.path.insert(0, os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes")) + "/scripts")
 from google_auth_mcp import get_service
 
 # =============================================================================
@@ -42,17 +72,31 @@ ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com")
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
 
 # =============================================================================
-# DATE SETUP — evening brief targets TOMORROW; PDT in summer is -07:00
+# DATE SETUP — evening brief targets TOMORROW. Offset derived per TARGET date
+# via zoneinfo, never hardcoded (see the DST gotcha in SKILL.md).
 # =============================================================================
-PDT = timezone(timedelta(hours=-7))
-now = datetime.now(PDT)
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo(os.environ.get("OCAS_TIMEZONE", "America/Los_Angeles"))
+now = datetime.now(LOCAL_TZ)
 today_str = now.strftime('%Y-%m-%d')
 tomorrow = now + timedelta(days=1)
 tomorrow_str = tomorrow.strftime('%Y-%m-%d')
 tomorrow_display = tomorrow.strftime('%A, %B %d, %Y')
 
-time_min = f"{tomorrow_str}T00:00:00-07:00"
-time_max = f"{(tomorrow + timedelta(days=1)).strftime('%Y-%m-%d')}T00:00:00-07:00"
+
+def _offset_for(date_str: str) -> str:
+    """RFC3339 UTC offset for midnight of date_str in the target timezone."""
+    off = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=LOCAL_TZ).utcoffset()
+    secs = int(off.total_seconds() if off else 0)
+    sign = '+' if secs >= 0 else '-'
+    secs = abs(secs)
+    return f"{sign}{secs // 3600:02d}:{(secs % 3600) // 60:02d}"
+
+
+day_after_tomorrow = tomorrow + timedelta(days=1)
+time_min = f"{tomorrow_str}T00:00:00{_offset_for(tomorrow_str)}"
+time_max = f"{day_after_tomorrow.strftime('%Y-%m-%d')}T00:00:00{_offset_for(day_after_tomorrow.strftime('%Y-%m-%d'))}"
 
 # =============================================================================
 # OAUTH: FIND WORKING ACCOUNT (multi-account fallback)
@@ -178,8 +222,8 @@ for ev in all_events:
     if is_timed:
         start_dt = fromisoformat_safe(start_data['dateTime'])
         end_dt = fromisoformat_safe(end_data['dateTime'])
-        start_local = start_dt.astimezone(PDT)
-        end_local = end_dt.astimezone(PDT)
+        start_local = start_dt.astimezone(LOCAL_TZ)
+        end_local = end_dt.astimezone(LOCAL_TZ)
         start_hhmm = start_local.strftime('%H:%M')
         end_hhmm = end_local.strftime('%H:%M')
         sort_key = f"{start_local.hour:02d}{start_local.minute:02d}"
@@ -357,8 +401,11 @@ briefing_payload = {
     "created_at": now.strftime('%Y-%m-%dT%H:%M:%S%z')
 }
 
-with open('/tmp/sands_evening_briefing.json', 'w') as f:
-    json.dump(payload, f, indent=2)
+if _DRY_RUN:
+    print("(dry-run) /tmp/sands_evening_briefing.json NOT written")
+else:
+    with open('/tmp/sands_evening_briefing.json', 'w') as f:
+        json.dump(payload, f, indent=2)
 
 print(f"\n{'='*55}")
 print(f"EVENING BRIEFING — {tomorrow_display}")

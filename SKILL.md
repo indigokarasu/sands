@@ -1,16 +1,16 @@
 ---
-warning: 'FALSE TRIGGER RISK: Has had 62% false trigger rate on interactive loads (16/26 auto). This skill is calendar management — not for general scheduling queries, time lookups, or when a dedicated calendar skill exists. Updated 2026-09-25: rate decreased from 81% (21/26).'
 name: ocas-sands
 license: MIT
-description: 'Calendar management. Use for viewing, querying, creating, modifying, deleting, or analyzing calendar events. Handles natural-language scheduling, conflict detection with flexibility classification, free slot finding, automatic travel time event insertion between consecutive appointments, recurring event management, and daily schedule briefings for Vesper. Do not use for reminders without calendar context, task management, or general time/timezone questions.'
+description: 'Calendar management: view, query, create, modify, delete, and analyze calendar events via natural language. Use for scheduling ("book a meeting Thursday 3pm"), conflict detection with flexibility classification, free-slot finding, automatic travel-time block insertion between consecutive appointments, recurring event management, and daily schedule briefings for Vesper. Keywords: calendar, event, schedule, meeting, appointment, availability, free slot, conflict, booking, recurring, travel time, briefing. NOT for reminders without calendar context, plain task management or to-do lists, general time/timezone questions, or when a dedicated calendar skill already owns the request.'
 source: https://github.com/<agent-handle>/sands
 includes:
 - references/**
 - evals/**
 - scripts/**
+- templates/**
 metadata:
   author: Indigo Karasu (indigokarasu)
-  version: "2.3.0"
+  version: "2.4.0"
   activation:
     requires_tools: ["workspace_mcp"]
     fallback_for_tools: ["google_api_fallback"]
@@ -21,17 +21,40 @@ metadata:
     - scheduling
     - events
     - OCAS-core
-tags:
-- calendar
-- scheduling
-- events
-- OCAS-core
+    config:
+    - key: OCAS_OPERATOR_EMAIL
+      description: Primary Google account email used for Calendar API access
+      default: "<user-google-email>"
+    - key: OCAS_AGENT_EMAIL
+      description: Secondary/fallback Google account tried when the primary token is invalid
+      default: "<agent-email>"
+    - key: OCAS_FAMILY_CALENDAR_ID
+      description: Shared family calendar id, queried alongside the personal calendar
+      default: "<family-calendar-id>@group.calendar.google.com"
+    - key: OCAS_TIMEZONE
+      description: IANA timezone for target-date UTC offset computation in the briefing templates
+      default: America/Los_Angeles
+    - key: HERMES_HOME
+      description: Hermes root used to locate scripts/google_auth_mcp.py
+      default: "~/.hermes"
+required_environment_variables:
+- name: OCAS_OPERATOR_EMAIL
+  prompt: Google account email with Calendar access
+  help_url: https://hermes-agent.nousresearch.com/docs
+  required_for: optional
+- name: OCAS_FAMILY_CALENDAR_ID
+  prompt: Shared family calendar id (group calendar)
+  help_url: https://hermes-agent.nousresearch.com/docs
+  required_for: optional
 triggers:
 - calendar view
 - calendar event
 - create event
 - modify calendar
 - schedule meeting
+- find free time
+- check conflicts
+- travel time between events
 ---
 ## Interactive Menu
 
@@ -104,14 +127,48 @@ After every Sands command:
 
 **Post-mutation verification**: After any create/modify/delete command, re-query the calendar for the affected event ID and confirm the change is reflected (correct title, time, calendar placement, or removal). If the event state does not match what was requested, log a `calendar_mismatch` entry in `evidence.jsonl` and alert the user — never silently assume the write succeeded.
 
+### I/O examples
+
+Appending a run record (the only supported way to write a Sands JSONL):
+
+```
+terminal("python3 <skill_dir>/scripts/append_jsonl.py \
+  $DATA_DIR/evidence.jsonl \
+  '{\"timestamp\":\"2026-09-27T06:00:00-07:00\",\"command\":\"sands.briefing.generate\",\
+    \"status\":\"ok\",\"not_activity_reason\":null}'")
+# → Appended. File now has 412 records.
+```
+
+Running the evening brief without persisting anything (safe probe):
+
+```
+terminal("python3 <skill_dir>/templates/sands_briefing_evening.py --dry-run")
+# → prints the summary + ---BRIEFING_PAYLOAD_JSON--- block
+# → "(dry-run) /tmp/sands_evening_briefing.json NOT written"
+```
+
+Reading a window (note the offset is for the *target* date, not today):
+
+```
+mcp_google_workspace_get_events(
+  user_google_email="<user-google-email>",
+  timeMin="2026-11-15T00:00:00-08:00",   # PST — November
+  timeMax="2026-11-16T00:00:00-08:00",
+  calendarId="<user-google-email>")
+```
+
+
 ## Hard boundaries
 
-- Never write to `work_calendar_id` — read/overlay as busy blocks only
-- All-day events do not trigger conflicts with timed events unless explicitly asked
-- Never auto-resolve conflicts — present options, let the user choose
-- Never use a hardcoded home address or assume a fixed city for travel departure
-- Never silently fall back to distance heuristics if Google Places API is unavailable — surface warning and ask for manual estimate
-- Undo window is 24 hours; recurring event scope changes cannot be undone
+Each of these is a hard stop rather than a default, because the failure mode is
+silent and expensive:
+
+- **Never write to `work_calendar_id`** — read/overlay as busy blocks only. It's another org's calendar; a write there fails silently or 403s, and Sands can't undo it.
+- **All-day events do not trigger conflicts with timed events** unless explicitly asked. Per Google semantics an all-day event spans the whole day; treating it as busy would mark every day full.
+- **Never auto-resolve conflicts** — present options, let the user choose. Which appointment moves is a human judgement, not a heuristic.
+- **Never use a hardcoded home address or assume a fixed city for travel departure** — a wrong origin silently produces a wrong travel block, which is worse than no block because it looks authoritative.
+- **Never silently fall back to distance heuristics if Google Places API is unavailable** — surface a warning and ask for a manual estimate. A guessed duration presented as a computed one is the exact failure this rule exists to prevent.
+- **Undo window is 24 hours; recurring event scope changes cannot be undone** — an unbounded undo on a recurring series can silently rewrite a month of history.
 
 ## Recovery Behavior
 
@@ -181,37 +238,26 @@ public
 
 ## Gotchas
 
-- **⚠️ write_file OVERWRITES — JSONL append requires read-then-rewrite or the helper script** — The `write_file` tool replaces the entire file. NEVER call `write_file` on `evidence.jsonl`, `decisions.jsonl`, or `events.jsonl` with only the new record — you will destroy all prior history. Two safe approaches:
-  1. **Preferred:** Use the `scripts/append_jsonl.py` helper: `terminal("python3 <skill_dir>/scripts/append_jsonl.py <path> '<json_record>'")`. It reads, appends, rewrites, and verifies line count atomically.
-  2. **Manual:** (1) `read_file` the existing JSONL, (2) construct the full content (all existing lines + new line), (3) `write_file` with the complete content. Always verify line count increased by 1 after writing.
-    If you accidentally overwrite, check session context for the original contents to restore from.
-  - **⚠️ Unicode-safe append (emoji in titles)** — Event titles routinely contain emoji (e.g. `🏺 Intro to Handbuilding`). The helper takes the record as a **shell-quoted positional arg**, so passing JSON with emoji/nested quotes through the shell mangles the data. For any record that may contain non-ASCII or nested quotes, DON'T shell-quote into `append_jsonl.py` — instead `write_file` a small Python script that opens the JSONL, filters blanks, appends `json.dumps(record)+'\n'`, rewrites, and asserts line count increased (then `terminal("python3 <that_script>")`). Building records as real Python dicts writes Unicode correctly via `json.dump`. See `references/cron_persistence.md` for the verified cron pattern and the full why.
-- **Work calendar is read-only** — Sands can overlay work calendar busy blocks but must never write to `work_calendar_id`. Writing to a read-only calendar will fail silently or produce API errors.
-- **All-day events don't conflict with timed events** — Per the hard boundary, all-day events are excluded from conflict detection with timed events unless the user explicitly asks. This can hide real scheduling issues if the user expects otherwise.
-- **Google Places API failure is surfaced, not silently handled** — If the Google Places API is unavailable, Sands does NOT fall back to distance heuristics. It surfaces a warning and asks for a manual estimate.
-- **Undo window is 24 hours and non-recurring** — Event undo is only available within 24 hours of the original action. Recurring event scope changes cannot be undone at all.
-- **OAuth tokens may stale between cron runs** — Calendar queries can fail with auth errors if the OAuth token expires between scheduled runs. Always trigger re-authentication before retrying; do not suppress the error.
-  - **Compound failure: OAuth stale + MCP unreachable** — When `get_events` fails with an OAuth error, the corrective action is `start_google_auth`. But if the MCP *server* is also unreachable, `start_google_auth` will fail too (same transport). In this scenario: (1) note `degraded: google_workspace_mcp` AND `degraded: oauth_stale` in evidence, (2) update `config.json auth_status` to `STALE_OAUTH`, (3) surface to the user that TWO things need fixing — the MCP server process must be running AND OAuth must be re-authorized. Do NOT retry auth in a loop when the MCP server is unreachable; it will just burn tool calls.
-- **Timezone offsets change with daylight saving** — Pacific time is `-08:00` (PST) in winter and `-07:00` (PDT) in summer. When building RFC3339 time_min/time_max for queries, determine the correct offset for the TARGET date, not today's date. Using the wrong offset shifts the query window by one hour and can return no events or wrong-day events. The `default_timezone` in config.json (`America/Los_Angeles`) is a hint — always check whether the target date falls in PDT (Mar–Nov) or PST (Nov–Mar) and use the matching offset.
-- **Google Workspace MCP server may be transiently unreachable** — If `get_events` or other MCP calls fail with "unreachable" errors, wait ~40 seconds (the auto-retry cooldown) and try once more before logging `degraded`. A single cooldown wait resolves most transient failures. Only log `degraded: google_workspace_mcp` after the retry also fails.
-- **Single event = no travel blocks needed** — When only one event exists on a travel-check day, there are nothing to insert between. Still write evidence (with `not_activity_reason: no_consecutive_events`) and update `config.json last_travel_check` so gap detection stops flagging the stale timestamp. If the single event is all-day (no timed events at all), use `not_activity_reason: no_timed_events` — this distinguishes "nothing to check" from "one event, nothing between."
-- **Overlapping events = no travel blocks, but flag conflict** — When consecutive timed events overlap (event B starts before event A ends), `gap_minutes` will be negative. Use `not_activity_reason: events_overlap_no_gap` in the evidence log. Also flag the overlap in the `overlap_detected` field so the evening brief and conflict scan can reference it. Do NOT create a travel block for overlapping events — they have no gap to fill.
-- **Google Places API key empty = travel check is observational** — When `google_places_api_key` is empty in config.json, travel blocks can never be auto-created. The travel-check command runs but will only report consecutive event pairs it cannot service. If the key is empty, note this in the evidence log's `degraded` field.
-- **MCP Google Workspace tools may fail with auth errors even when the server is running** — The `mcp_google_workspace_get_events` and related MCP tools can return OAuth errors (401/403, `invalid_grant`) even when the MCP server process is reachable. When ANY MCP calendar call fails with an auth error, switch to the direct Python fallback: `from google_auth import get_calendar_service` from `<hermes-home>/scripts/google_auth.py` and call the Calendar API v3 directly. The direct fallback uses the same credential store (`<gworkspace-creds>/credentials/`) and often succeeds when MCP fails because it bypasses the MCP server's token management layer. See `references/direct_calendar_access.md` for the working pattern.
-- **Reference files may be empty** — `references/briefing_windows.md`, `references/vesper_emit_format.md`, and `references/preparation_signals.md` are currently 0 bytes. Do not block on reading them; proceed with the defaults documented in this SKILL.md (morning brief = today's events, evening brief = tomorrow's events, both in `America/Los_Angeles`).
-- **Calendar IDs can 404** — If a configured `primary_calendar_id` returns 404 (not found), log it in `degraded` and continue with the remaining calendars. Surface the broken calendar ID to the user so they can update `config.json`. Do not let one broken calendar block the entire query.
-- **execute_code is blocked in cron mode** — Cron jobs run without a user present to approve `execute_code`, so it will be rejected. When Sands needs to run Python analysis scripts (conflict detection, travel analysis, etc.) from a cron job, use the `write_file` + `terminal` pattern instead: (1) `write_file` the script to a temp path like `/tmp/sands_analysis.py`, (2) `terminal("python3 /tmp/sands_analysis.py")` to run it, (3) read results from stdout or a temp JSON output file. See `references/direct_calendar_access.md` for the full cron-compatible pattern. For conflict scans, you can copy and adapt the reusable template at `scripts/conflict_scan_template.py`.
-- **Cross-calendar duplicates are conflicts** — When the same event appears on multiple calendars (detected by matching summary + start time + location), flag it as a DUPLICATE conflict. Timezone offset differences between calendars can make the same event appear at different UTC times — normalize to local time before comparing. Recommend removing the duplicate from the non-canonical calendar.
-- **Events crossing midnight UTC may belong to the previous local day** — When querying with UTC-based time windows, an event starting at `2026-06-07T01:00:00Z` is actually `2026-06-06T18:00:00-07:00` (6 PM PDT on June 6). Always convert event start times to local timezone (`America/Los_Angeles`) before assigning to a date. The `singleEvents=True` parameter in the Calendar API expands recurring events but does not normalize timezones — the response preserves the event's original timezone, which may differ from the query window timezone.
-- **MCP tools require `user_google_email` on every call** — Every `mcp_google_workspace_*` tool requires a `user_google_email` parameter (the authenticated user's Google email). Omitting it produces a Pydantic validation error that doesn't clearly say "missing parameter." Always include `user_google_email` — use the agent's own email (e.g., `<agent-email>`) unless the user specifies otherwise. This applies to ALL MCP Google Workspace tools, not just `get_events`.
-- **Zero-duration events are warnings, not conflicts** — Events where `start == end` do not overlap with anything and should not be flagged as conflicts. Instead, flag them as `zero_duration` warnings in the report. These are almost always data quality issues (end time not set correctly). **Critical code-level trap:** `span_minutes()`'s midnight-crossing guard (`if e <= s: e += 1440`) expands a `12:45 -> 12:45` event into a 24-hour span, which fabricates overlaps with every later event AND pollutes free-hours math. Therefore BOTH conflict detection and free-hours computation MUST exclude zero-duration events BEFORE calling `span_minutes` (compute `zero_duration = is_timed and start == end` at parse time, then compare only non-zero-duration events and skip them in `calc_free_hours`). This bug was live in `templates/sands_briefing_morning.py` until 2026-07-23 and produced a false 120-min "Appointment overlaps Gym" conflict. See `references/zero_duration_briefing.md` and `references/conflict_detection.md`.
-- **⚠️ Midnight-crossing events break naive conflict & free-hour math** — An event ending at `00:00` (e.g. `19:30`→`00:00`) parsed by naive `HH:MM`→minutes yields a *negative* overlap (`0 - 1170`) that hides a real conflict. Always treat `end_min <= start_min` as crossing midnight (add `1440` to end) before computing overlaps or busy spans. Found and fixed 2026-07-22 in `templates/sands_briefing_morning.py` (conflict loop + `calc_free_hours`); the fix uses `span_minutes(start, end)`. `scripts/conflict_scan_template.py` uses UTC-aware overlap detection so it is NOT affected — but any new HH:MM-minute-based overlap code must apply the same guard.
-- **`400 Bad Request` from oauth2.googleapis.com = dead credentials** — Besides `invalid_grant`, expired/revoked refresh tokens can return HTTP `400` from the token endpoint. Surfaces as `"400 Client Error: Bad Request for url: https://oauth2.googleapis.com/token"` from `get_service()`. Treat identically to `invalid_grant`: log, move to next account. Do NOT interpret `400` as a bug in your code.
+Full pitfall list: `references/gotchas.md`. The three that cause data loss or
+silent wrong answers most often:
 
-- **⚠️ Interactive command access** — Sands commands like `sands.logistics.travel` are not direct shell commands. They are accessed through the skill's interactive menu. Invoke the skill with `/` command (or your interface's equivalent) to see the two-level menu, then navigate to the desired command (e.g., Travel Check → Check next day events for missing travel blocks). Direct shell invocation of sands commands will not work and will produce "command not found" errors.
-- **`config.json` `auth_status` can be stale after fallback** — When the primary account's token is dead but the fallback account succeeds, `auth_status` may still say `MCP_ONLY` or `STALE_OAUTH`. After a successful direct-Python fallback, update `auth_status` to `OK` so the next run doesn't pre-emptively assume degradation. The field reflects the *system's* ability to reach the calendar, not any single account's token state.
-- **Journal directory may not exist on first cron run** — The `## Initialization` step 4 says to create `{agent_root}/commons/journals/ocas-sands/`, but journal writes have been observed to land at `{data_dir}/journals/` (i.e., the same parent as `config.json`). Before calling `append_jsonl.py` for journals, ensure the directory exists: `mkdir -p "$DATA_DIR/journals"`. If the append fails with `FileNotFoundError` on the parent, create it and retry. The script itself only handles file-level existence, not directory creation.
-- **Evening-brief template now exists** — `templates/sands_briefing_evening.py` mirrors the morning template but targets TOMORROW, omits prep-signal checks, emits `proposal_type: routine_prediction`, and excludes zero-duration events from conflict/free-hours math. The morning template previously had the zero-duration false-conflict bug (see below); the evening template was written correct from the start and the morning template was patched to match. When generating evening briefs, run the template (pure generator) then persist: query all primary calendars with PDT-correct offsets, sort by start time, check overlaps/duplicates within the target date, build the Vesper InsightProposal payload (`brief_type: evening`, `proposal_type: routine_prediction`), render the report, write evidence with `command: sands.briefing.generate`, write to action journal (briefing.generate is an Action Journal command), update `config.json last_evening_brief`. Persistence recipe in `references/zero_duration_briefing.md`.
+- **`write_file` OVERWRITES — never use it for a JSONL append.** Use `scripts/append_jsonl.py`; for titles with emoji, see the Unicode-safe pattern in `references/cron_persistence.md`.
+- **Zero-duration and midnight-crossing events break naive overlap math.** Exclude `start == end` before calling `span_minutes`, and add 1440 when `end_min <= start_min`. See `references/zero_duration_briefing.md`.
+- **Every MCP Google Workspace call needs `user_google_email`.** Omitting it yields a Pydantic error that never says "missing parameter." See `references/gotchas.md` → MCP Tool Quirks.
+
+## Error Handling
+
+| Failure | Symptom | Handling |
+|---|---|---|
+| `invalid_grant` or `400 Bad Request` from `oauth2.googleapis.com/token` | `get_service()` raises for one account | Log the account, try the next in `ACCOUNTS_TO_TRY`; if all fail set `auth_status: STALE_OAUTH` and log `degraded: oauth_stale` |
+| MCP server unreachable | `get_events` fails with a transport error | Wait ~40s (auto-retry cooldown) and retry once; only then log `degraded: google_workspace_mcp` |
+| MCP auth error with the server reachable | 401/403 / `invalid_grant` from `mcp_google_workspace_*` | Switch to the direct Python fallback (`get_service`); it bypasses the MCP token layer. See `references/direct_calendar_access.md` |
+| Cron run, no user present to re-auth | Interactive OAuth consent cannot run | Log `degraded: cron_cannot_reauth`, still update `last_*` timestamps so gap detection doesn't flag a scan that never happened |
+| A configured calendar id 404s | `list`/`get` returns 404 for one id | Log it in `degraded`, continue with remaining calendars, surface the broken id to the user |
+| `google_places_api_key` empty | Travel check finds consecutive pairs it cannot service | Run observationally; report the pairs and note `degraded`. Do not fabricate a distance |
+| `FileNotFoundError` appending to a journal | Parent directory missing on first run | `mkdir -p "$DATA_DIR/journals"` and retry; `append_jsonl.py` handles files, not parent dirs |
+| `execute_code` rejected in cron | Tool call refused — no user to approve | Use the `write_file` + `terminal` pattern; see `references/direct_calendar_access.md` |
+| Post-write re-query disagrees with the request | Event state does not match | Log `calendar_mismatch` in `evidence.jsonl` and alert the user — never assume the write succeeded |
 
 ## Cron Script Templates
 
@@ -242,10 +288,13 @@ public
 | `references/gotchas.md` | Common pitfalls, OAuth quirks, MCP tool limitations, cron-mode constraints, and UCSF MyChart double-import pattern |
 | `references/cron_persistence.md` | Unicode-safe JSONL persistence in cron mode (emoji in titles) + why `config.json primary_calendar_ids` drifts from the briefing template's hardcoded calendar list |
 | `templates/sands_briefing_morning.py` | Reusable cron-compatible morning briefing script — multi-account fallback, dedup, conflict detection, prep signals |
-| `references/mcp_fallback_briefing.md` | When encountering dependency errors with the morning briefing script |
-
-## Support Files
-
-- `references/google_calendar_api.md` — Google Calendar API Implementation
-- `references/oauth_recovery.md` — OAuth Recovery Escalation Patterns
-- `scripts/update.sh`
+| `references/mcp_fallback_briefing.md` | When the morning briefing script raises a dependency or import error |
+| `references/known-calendar-ids.md` | Before using a calendar id that isn't in config.json, or when a configured id returns 404 |
+| `references/okrs.md` | When aligning a run's evidence record against the universal OKRs |
+| `references/schemas.md` | Before writing any record to evidence/decision/event JSONL, or when adding a field |
+| `references/google_calendar_api.md` | When a query needs a Calendar API parameter the MCP wrapper rejects (`orderBy`, `singleEvents`, `showDeleted`) |
+| `references/oauth_recovery.md` | When both accounts fail auth and you need the escalation order before declaring degradation |
+| `references/interactive-menu.md` | When invoked interactively via the `/` command, to render and parse the two-level menu |
+| `references/zero_duration_briefing.md` | Before persisting a morning or evening brief, or when writing overlap/zero-duration math |
+| `templates/sands_briefing_evening.py` | When generating the 20:00 evening brief for tomorrow |
+| `scripts/append_jsonl.py` | Whenever appending a record to any Sands JSONL — never use `write_file` on one |
