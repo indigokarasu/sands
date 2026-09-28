@@ -58,12 +58,26 @@ from google_auth_mcp import get_service
 # =============================================================================
 # CONFIGURATION — update these to match config.json
 # =============================================================================
-CALENDAR_IDS = [
-    os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"),
-    "<family-calendar-id>@group.calendar.google.com"
-]
+def _require_env(name):
+    """Return the env value or exit with a clear error.
+
+    A redacted placeholder or a default email reaching the API produces a 404
+    that reads like a transient fault. Fail loudly at startup instead.
+    (See references/gotchas.md -> "Never ship a redacted <placeholder>".)
+    """
+    val = os.environ.get(name, "").strip()
+    if not val or "<" in val or ">" in val or "example.com" in val:
+        sys.exit(f"ABORT: {name} is unset or still a placeholder: {val!r}. "
+                 f"Set it to a real calendar id before generating a briefing.")
+    return val
+
+
+OPERATOR_EMAIL = _require_env("OCAS_OPERATOR_EMAIL")
+FAMILY_CALENDAR_ID = _require_env("OCAS_FAMILY_CALENDAR_ID")
+
+CALENDAR_IDS = [OPERATOR_EMAIL, FAMILY_CALENDAR_ID]
 WORK_CALENDAR_ID = ""  # leave empty if no work calendar
-ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]
+ACCOUNTS_TO_TRY = [a for a in [OPERATOR_EMAIL, os.environ.get("OCAS_AGENT_EMAIL", "").strip()] if a]
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
 
 # =============================================================================
@@ -257,6 +271,8 @@ for ev in all_events:
 
     cal_label = 'family' if 'family' in ev.get('_source_calendar', '') else 'personal'
 
+    zero_duration = is_timed and (start_hhmm == end_hhmm)
+
     parsed_events.append({
         'summary': ev.get('summary', '(untitled)'),
         'description': ev.get('description', ''),
@@ -268,6 +284,7 @@ for ev in all_events:
         'htmlLink': ev.get('htmlLink', ''),
         'all_day': all_day,
         'is_timed': is_timed,
+        'zero_duration': zero_duration,
         'attendees': ev.get('attendees', []),
         'organizer': ev.get('organizer', {}).get('email', ''),
         'start_data': start_data,
@@ -277,16 +294,21 @@ for ev in all_events:
 parsed_events.sort(key=lambda e: (0 if e['all_day'] else 1, e['sort_key']))
 
 # =============================================================================
-# CONFLICT DETECTION
+# CONFLICT DETECTION — zero-duration events excluded BEFORE span_minutes().
+# span_minutes() has a midnight-crossing guard that expands start == end into a
+# 24h busy span, manufacturing a false conflict against every later event.
+# See references/zero_duration_briefing.md.
 # =============================================================================
 timed_events = [e for e in parsed_events if e['is_timed']]
+zero_duration_events = [e for e in timed_events if e.get('zero_duration')]
+durational_events = [e for e in timed_events if not e.get('zero_duration')]
 conflicts_detected = 0
 event_conflict_notes = {}
 
-for i in range(len(timed_events)):
-    for j in range(i + 1, len(timed_events)):
-        a = timed_events[i]
-        b = timed_events[j]
+for i in range(len(durational_events)):
+    for j in range(i + 1, len(durational_events)):
+        a = durational_events[i]
+        b = durational_events[j]
         a_s, a_e = span_minutes(a['start'], a['end'])
         b_s, b_e = span_minutes(b['start'], b['end'])
 
@@ -344,6 +366,8 @@ def calc_free_hours(events, work_start="09:00", work_end="18:00"):
     for ev in events:
         if not ev['is_timed']:
             continue
+        if ev.get('zero_duration'):
+            continue
         s, e = span_minutes(ev['start'], ev['end'])
         busy.append((max(s, ws), min(e, we)))
     busy = [b for b in busy if b[1] > b[0]]
@@ -363,6 +387,7 @@ def calc_free_hours(events, work_start="09:00", work_end="18:00"):
     return max(0, (we - ws - total_busy) / 60)
 
 free_hours = calc_free_hours(parsed_events, WORKING_HOURS["start"], WORKING_HOURS["end"])
+zero_duration_count = len(zero_duration_events)
 
 # =============================================================================
 # BUILD OUTPUT
@@ -390,6 +415,7 @@ for ev in parsed_events:
         'all_day': ev['all_day'],
         'conflict': is_conflict,
         'conflict_note': conflict_note,
+        'zero_duration': ev.get('zero_duration', False),
         'prep_required': prep_needed,
         'prep_note': prep_reason if prep_needed else None,
         'travel_before': False,
@@ -421,6 +447,11 @@ else:
     if prep_count:
         prep_str = f". {prep_count} item{'s' if prep_count > 1 else ''} need preparation"
 
+    zero_dur_str = ""
+    if zero_duration_count:
+        zero_dur_str = (f". {zero_duration_count} zero-duration event{'s' if zero_duration_count > 1 else ''} "
+                        f"excluded from conflict and free-hours math")
+
     conflict_str = ""
     if conflicts_detected:
         conflict_str = f". {conflicts_detected} conflict{'s' if conflicts_detected > 1 else ''} detected"
@@ -428,7 +459,7 @@ else:
     summary_note = (
         f"Today is {today_display}. {total_events} events scheduled"
         f"{time_range}, ~{free_hours:.1f} free working hours"
-        f"{prep_str}{conflict_str}."
+        f"{prep_str}{zero_dur_str}{conflict_str}."
     )
 
 # =============================================================================
@@ -448,7 +479,13 @@ payload = {
     'events': output_events,
     'work_busy_blocks': [],
     'conflicts_detected': conflicts_detected,
-    'prep_items_count': prep_count
+    'zero_duration_warnings': zero_duration_count,
+    'prep_items_count': prep_count,
+    'calendars_queried': CALENDAR_IDS,
+    'calendar_errors': calendar_errors,
+    'auth_account': working_account,
+    'auth_fallback_used': auth_fallback_used,
+    'generated_at': now.isoformat()
 }
 
 if _DRY_RUN:
@@ -460,7 +497,7 @@ else:
 print(f"\n{'='*55}")
 print(f"MORNING BRIEFING — {today_display}")
 print(f"{'='*55}")
-print(f"Events: {total_events} | Conflicts: {conflicts_detected} | Prep: {prep_count}")
+print(f"Events: {total_events} | Conflicts: {conflicts_detected} | Prep: {prep_count} | Zero-dur: {zero_duration_count}")
 print(f"Free hours: {free_hours:.1f}")
 print(f"Auth: {working_account}" + (" (fallback)" if auth_fallback_used else ""))
 if calendar_errors:

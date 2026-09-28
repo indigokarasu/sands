@@ -18,7 +18,21 @@ This script handles:
 After running, append results to evidence.jsonl and update config.json.
 """
 import json
+import re
 import sys
+
+# JEV adjudicates the cases the keyword lists cannot settle. Optional: if the
+# client is missing or has no key, classify_event keeps its own verdict.
+try:
+    sys.path.insert(0, '/root/.hermes/skills/jeveer')
+    import jev_client as _jev_client
+except Exception:
+    _jev_client = None
+
+# Minimum API confidence for a JEV verdict to stand. Below it, the local rules
+# keep the event. Tuned 2026-09-27 against jev-1.13.0; the wrong answer here
+# reshuffles a real day, so it is set high and reviewable in one place.
+JEV_FLEXIBILITY_MIN_CONFIDENCE = 0.65
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
@@ -223,6 +237,15 @@ def classify_event(ev):
             fixed_signals.append('external attendees')
             break
 
+    # Word-boundary matching. The previous bare `if kw in title` matched inside
+    # words: "lab" in "Label design review", "scan" in "Scanning photos",
+    # "class" in "Classical music", "run" in "Brunch with Mom" (a fixed event
+    # then mis-tagged flexible). Boundaries fix those; JEV below handles the
+    # cases boundaries cannot, where the meaning is in the words after the
+    # keyword rather than the keyword itself.
+    def _kw_hit(kw):
+        return re.search(r'(?<!\w)' + re.escape(kw) + r'(?!\w)', title) is not None
+
     fixed_keywords = [
         'call', 'meeting', 'interview', 'sync', 'standup', 'review',
         'appointment', 'doctor', 'dentist', 'flight', 'train', 'reservation',
@@ -234,7 +257,7 @@ def classify_event(ev):
         'dinner', 'lunch', 'breakfast', 'brunch', 'mastery', 'training'
     ]
     for kw in fixed_keywords:
-        if kw in title:
+        if _kw_hit(kw):
             fixed_signals.append(f'title keyword: {kw}')
             break
 
@@ -252,7 +275,7 @@ def classify_event(ev):
     ]
     flexible_signals = []
     for kw in flexible_keywords:
-        if kw in title:
+        if _kw_hit(kw):
             flexible_signals.append(f'title keyword: {kw}')
             break
 
@@ -260,11 +283,92 @@ def classify_event(ev):
     no_conference = not conference
     no_fixed_venue = not any(v in location for v in ['spa', 'clinic', 'hospital', 'office', 'restaurant', 'salon'])
 
+    # A structural signal -- an external attendee, a conference link, a
+    # recurring booking, a work-calendar block -- is not a judgment call and is
+    # never overruled. JEV only gets a turn on the ones where the verdict rests
+    # on what the title *means*, which is where keywords are weakest.
+    structural_fixed = bool(conference) or recurring or 'work' in calendar.lower() or not no_external
+    keyword_fixed = any(s.startswith('title keyword') for s in fixed_signals)
+    keyword_flexible = bool(flexible_signals)
+
+    if not structural_fixed and (keyword_fixed or keyword_flexible or not (fixed_signals or flexible_signals)):
+        verdict = _jev_flexibility(ev, title)
+        # Three bands, not two. A confident JEV answer decides. An unconfident
+        # one is not allowed to overwrite the local rules -- it falls through to
+        # them, and a low-confidence disagreement becomes AMBIGUOUS for a human.
+        # Measured 2026-09-27: "Coffee with Dana" with no metadata came back
+        # 'fixed' at confidence 0.31, the same question at 0.97 'flexible' once
+        # an attendee was present. The low number was the model saying it lacked
+        # evidence, not making a call.
+        if verdict is not None and verdict[0] is not None and verdict[1] >= JEV_FLEXIBILITY_MIN_CONFIDENCE:
+            choice, conf = verdict
+            sigs = flexible_signals + fixed_signals
+            return ('FLEXIBLE' if choice == 'flexible' else 'FIXED'), sigs + [
+                f'JEV: {choice} ({conf:.2f})'
+            ]
+        # Unconfident JEV falls through to the local rules below, which is the
+        # behaviour this script had before JEV existed. JEV only escalates to a
+        # human when the local rules have nothing to say and JEV is unsure too.
+
     if flexible_signals and no_external and no_conference and no_fixed_venue:
         return 'FLEXIBLE', flexible_signals
     if fixed_signals:
+        # Reached only when JEV did not answer, was unavailable, or was
+        # unconfident. The original behaviour stands: a fixed keyword is a fixed
+        # event. This is the path that must keep working with no key and no
+        # network, so it must not depend on either.
         return 'FIXED', fixed_signals
     return 'AMBIGUOUS', ['insufficient metadata or mixed signals']
+
+
+def _jev_flexibility(ev, title):
+    """One Choice question, JEV decides.
+
+    Returns ``(choice, confidence)``, or None when no answer was available
+    (no key, network, rate limit) so the caller keeps its own verdict. The local
+    rules are never overwritten on a failed call.
+    """
+    if _jev_client is None or not _jev_client.available():
+        return None
+    attendees = ev.get('attendees', [])
+    has_external = any(
+        (a.get('email') and not a['email'].endswith(('@gmail.com', '@googlemail.com')))
+        for a in attendees
+    )
+    state = {
+        'summary': ev.get('summary', ''),
+        'location': ev.get('location', ''),
+        'has_external_attendees': has_external,
+        'has_conference_link': bool(ev.get('conference')),
+        'is_recurring': bool(ev.get('recurring', False)),
+        'calendar_name': ev.get('calendar', ''),
+    }
+    answers = _jev_client.system_one(state, {
+        'flexibility': {
+            'type': 'choice',
+            'instructions': (
+                'Would this event be impossible to move or drop without breaking a '
+                'commitment to another person? A recurring event, one with a booked '
+                'time or place, one with a conference link, or one that another '
+                'person is counting on, is fixed. An event that only affects the '
+                'owner\'s own time and could be shifted, shortened, or skipped is '
+                'flexible, even if its title contains a word that usually describes '
+                'a commitment.'
+            ),
+            'criteria': {
+                'fixed': 'Moving or dropping it breaks a commitment to someone else, or it has a booked time or place.',
+                'flexible': 'Only the owner\'s own time is affected; it could be moved, shortened, or skipped.',
+            },
+        }
+    })
+    if not answers or 'flexibility' not in answers:
+        return None
+    ans = answers['flexibility']
+    # Use the API's .confidence, not the top probability. .confidence is
+    # (n*top - 1)/(n - 1): it accounts for the option count, so a two-way split
+    # at 0.5/0.5 reads as 0.0 rather than looking like a coin flip. Verified
+    # against jev-1.13.0 on 2026-09-27.
+    return ans.get('choice'), float(ans.get('confidence', 0.0))
 
 # --- Build output ---
 output = {

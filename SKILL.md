@@ -166,6 +166,7 @@ silent and expensive:
 - **Never write to `work_calendar_id`** — read/overlay as busy blocks only. It's another org's calendar; a write there fails silently or 403s, and Sands can't undo it.
 - **All-day events do not trigger conflicts with timed events** unless explicitly asked. Per Google semantics an all-day event spans the whole day; treating it as busy would mark every day full.
 - **Never auto-resolve conflicts** — present options, let the user choose. Which appointment moves is a human judgement, not a heuristic.
+- **Overlap between DIFFERENT people's calendars is not a conflict by default.** The operator shares a household with others (spouse/family calendar) who have their own commitments. Two events at the same time — one on the operator's calendar, one on a housemate's — means each of them is busy somewhere, not that either has a double-booking. Only report a conflict when (a) two events overlap on the SAME calendar, or (b) the operator is expected at both. Overlays of a second calendar (work, spouse, family) are BUSY CONTEXT for feasibility, not conflict triggers. Ask before surfacing cross-calendar overlap as a conflict.
 - **Never use a hardcoded home address or assume a fixed city for travel departure** — a wrong origin silently produces a wrong travel block, which is worse than no block because it looks authoritative.
 - **Never silently fall back to distance heuristics if Google Places API is unavailable** — surface a warning and ask for a manual estimate. A guessed duration presented as a computed one is the exact failure this rule exists to prevent.
 - **Undo window is 24 hours; recurring event scope changes cannot be undone** — an unbounded undo on a recurring series can silently rewrite a month of history.
@@ -298,3 +299,4 @@ silent wrong answers most often:
 | `references/zero_duration_briefing.md` | Before persisting a morning or evening brief, or when writing overlap/zero-duration math |
 | `templates/sands_briefing_evening.py` | When generating the 20:00 evening brief for tomorrow |
 | `scripts/append_jsonl.py` | Whenever appending a record to any Sands JSONL — never use `write_file` on one |
+| `scripts/briefing_morning_regression.py` | After editing `templates/sands_briefing_morning.py`, or when a brief looks wrong — verifies `--help` stays side-effect free and that placeholder/unset calendar ids abort instead of 404ing |

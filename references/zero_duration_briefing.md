@@ -43,8 +43,12 @@ if ev.get('zero_duration'):
     continue
 ```
 
-Both `templates/sands_briefing_morning.py` (patched 2026-07-23) and
-`templates/sands_briefing_evening.py` (written correct from the start) do this.
+Both `templates/sands_briefing_morning.py` and `templates/sands_briefing_evening.py`
+exclude zero-duration events this way. The evening template was written correct from
+the start; **the morning template's guard was claimed here since 2026-07-23 but was
+never actually in the file** — found absent during the 2026-09-27 morning-brief run
+and patched. A reference asserting a fix shipped is not evidence the fix shipped:
+diff the template against this recipe before relying on it.
 
 ## Evening-brief run-completion persistence (2026-07-23 recipe)
 
