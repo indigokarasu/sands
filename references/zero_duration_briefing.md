@@ -50,6 +50,34 @@ never actually in the file** — found absent during the 2026-09-27 morning-brie
 and patched. A reference asserting a fix shipped is not evidence the fix shipped:
 diff the template against this recipe before relying on it.
 
+## The same class of defect, second instance (2026-09-28)
+
+`check_prep_signals()` in the morning template flagged **any** event with a
+location as prep_required, while `references/preparation_signals.md` counts a
+location only when the venue is new in the last 30 days or a travel block was
+inserted — and explicitly exempts solo personal activity and repeated titles with
+no external attendees. Effect: 4 of 5 events flagged on 2026-09-28; after the fix,
+2 (both genuine new-venue flags).
+
+Two traps while fixing it, both of which the regression script caught and a visual
+inspection of the brief would not have:
+
+1. **Empty history reads as "everything is new."** Building the 30-day history with
+   `datetime.fromisoformat(bare_date).utcoffset()` returns `None` (naive datetime),
+   so the query raised and the history silently emptied — every located event then
+   flagged as a new venue, which looks like the bug got worse, not better. Attach
+   the timezone explicitly: `.replace(tzinfo=LOCAL_TZ)`.
+2. **Venue strings vary cosmetically.** The same venue appears as `... CA` and
+   `... CA 94133` and with a trailing `, USA`. Compare normalized street+city keys,
+   or every event reads as a new venue.
+
+**Generalized rule:** a rule implemented in `references/*.md` but not in the template
+is a latent defect, and a reference claiming an implementation exists is worth
+zero until diffed against the file. When a template change adds a new query or
+derived data, make the regression script fail on the *degraded* path, not just the
+success path — the empty-history bug passed every eyeball check and only failed
+because the script asserts stdout contains no `ERROR`.
+
 ## Evening-brief run-completion persistence (2026-07-23 recipe)
 
 The briefing templates are pure generators. The calling cron run must persist:
