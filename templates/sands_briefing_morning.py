@@ -332,26 +332,114 @@ PREP_TITLE_KEYWORDS = [
     'performance', 'evaluation', 'assessment', 'report', 'workshop', 'panel', 'keynote'
 ]
 
-def check_prep_signals(event):
-    """Returns (bool, reason_str) for whether event needs prep."""
-    title_lower = event['summary'].lower()
+# references/preparation_signals.md -> "Do NOT Flag as Prep-Required":
+# solo personal activity with no attendees needs no prep.
+PREP_SOLO_EXEMPT_KEYWORDS = [
+    'gym', 'workout', 'errand', 'groceries', 'personal', 'reading',
+    'focus time', 'deep work', 'meditation', 'journaling', 'solo lunch'
+]
+
+# How far back to look for "has this location appeared before?".
+PREP_LOCATION_HISTORY_DAYS = 30
+
+
+def _norm_loc(loc):
+    """Normalize a location string to a venue key so cosmetic differences
+    (missing zip, ', USA' suffix, house-number padding) don't read as a new
+    venue. Key on street + city — the first two comma-separated segments."""
+    if not loc:
+        return ''
+    segs = [s.strip() for s in loc.split(',') if s.strip()]
+    keep = segs[:2] if len(segs) >= 2 else segs
+    return ' '.join(keep).lower()
+
+
+def _build_location_history(service, calendar_ids, local_tz, today_str):
+    """Venues seen in the PRECEDING `PREP_LOCATION_HISTORY_DAYS`, strictly
+    before today, so an event's own occurrence can't mark its venue as
+    familiar. Returns (set_of_venue_keys, set_of_repeated_titles).
+
+    A bounded extra query per calendar (~1s for both) — the new-location
+    rule is otherwise undecidable. Failure is non-fatal: an empty history
+    degrades to "every located event looks new", which is loud but safe.
+    """
+    venues, titles = set(), {}
+    for cal_id in calendar_ids:
+        try:
+            # fromisoformat() on a bare date yields a NAIVE datetime, whose
+            # utcoffset() is None — that silently emptied this history before.
+            # Attach the target timezone explicitly.
+            today_midnight = datetime.fromisoformat(today_str).replace(tzinfo=local_tz)
+            start = today_midnight - timedelta(days=PREP_LOCATION_HISTORY_DAYS)
+            end = today_midnight
+            tmin = f"{start.strftime('%Y-%m-%d')}T00:00:00{_fmt_off(start.utcoffset())}"
+            tmax = f"{end.strftime('%Y-%m-%d')}T00:00:00{_fmt_off(end.utcoffset())}"
+            items = service.events().list(
+                calendarId=cal_id, timeMin=tmin, timeMax=tmax,
+                singleEvents=True, orderBy='startTime', showDeleted=False,
+                maxResults=2500,
+            ).execute().get('items', [])
+        except Exception as e:
+            print(f"  location-history {cal_id}: ERROR {str(e)[:60]}")
+            continue
+        for ev in items:
+            key = _norm_loc(ev.get('location'))
+            if key:
+                venues.add(key)
+            title = (ev.get('summary') or '').strip().lower()
+            if title:
+                titles[title] = titles.get(title, 0) + 1
+    return venues, {t for t, n in titles.items() if n >= 3}
+
+
+def _fmt_off(off):
+    total = int(off.total_seconds())
+    sign = '+' if total >= 0 else '-'
+    total = abs(total)
+    return f"{sign}{total // 3600:02d}:{(total % 3600) // 60:02d}"
+
+
+def check_prep_signals(event, known_venues, recurring_titles):
+    """Returns (bool, reason_str) for whether event needs prep.
+
+    Implements references/preparation_signals.md, including its "do NOT flag"
+    clauses. A location alone is NOT a prep signal — it qualifies only when the
+    venue is new in the last 30 days, or a travel block was inserted before
+    the event.
+    """
+    title = event['summary'].strip()
+    title_lower = title.lower()
+    attendees = event.get('attendees', [])
+
+    # --- Do NOT flag: recurring, repeated, no external attendees ---
+    external = any(
+        '@' in a.get('email', '') and a.get('email', '').split('@')[1] not in
+        ('gmail.com', 'googlemail.com')
+        for a in attendees
+    )
+    if title_lower in recurring_titles and not external:
+        return False, ""
+
+    # --- Do NOT flag: solo personal activity ---
+    if not external and any(kw in title_lower for kw in PREP_SOLO_EXEMPT_KEYWORDS):
+        return False, ""
+
+    # --- Do flag: strong signals ---
     for kw in PREP_TITLE_KEYWORDS:
         if kw in title_lower:
             return True, f"'{kw}' in title"
 
-    attendees = event.get('attendees', [])
     if len(attendees) >= 3:
         return True, f"{len(attendees)} attendees"
-    if len(attendees) >= 1:
-        for att in attendees:
-            email = att.get('email', '')
-            if email and '@' in email:
-                domain = email.split('@')[1]
-                if domain not in ('gmail.com',):
-                    return True, "External attendee"
+    if external:
+        return True, "External attendee"
 
-    if event.get('location'):
-        return True, f"Location: {event['location'][:40]}"
+    # --- Location signals (narrow, per the reference) ---
+    if event.get('travel_before'):
+        return True, "Travel block inserted before this event"
+    loc_key = _norm_loc(event.get('location'))
+    if loc_key and loc_key not in known_venues:
+        return True, f"New venue (not on either calendar in {PREP_LOCATION_HISTORY_DAYS} days)"
 
     return False, ""
 
@@ -389,6 +477,13 @@ def calc_free_hours(events, work_start="09:00", work_end="18:00"):
 free_hours = calc_free_hours(parsed_events, WORKING_HOURS["start"], WORKING_HOURS["end"])
 zero_duration_count = len(zero_duration_events)
 
+# Venue + repeat-title history backing the prep rules' "new location" test.
+known_venues, recurring_titles = _build_location_history(
+    calendar, CALENDAR_IDS, LOCAL_TZ, today_str
+)
+print(f"  history: {len(known_venues)} known venues, "
+      f"{len(recurring_titles)} repeated titles")
+
 # =============================================================================
 # BUILD OUTPUT
 # =============================================================================
@@ -401,7 +496,7 @@ last_event_time = timed_events[-1]['end'] if timed_events else ""
 for ev in parsed_events:
     is_conflict = id(ev) in event_conflict_notes
     conflict_note = "; ".join(event_conflict_notes[id(ev)]) if is_conflict else None
-    prep_needed, prep_reason = check_prep_signals(ev)
+    prep_needed, prep_reason = check_prep_signals(ev, known_venues, recurring_titles)
     if prep_needed:
         prep_count += 1
 
