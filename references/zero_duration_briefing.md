@@ -78,6 +78,40 @@ derived data, make the regression script fail on the *degraded* path, not just t
 success path — the empty-history bug passed every eyeball check and only failed
 because the script asserts stdout contains no `ERROR`.
 
+## A third instance: `_norm_loc` and the embedded newline (2026-09-29)
+
+Same family, different field. `_norm_loc()` split the location string on **commas
+only**, so a multi-line Google location — venue on line 1, street on line 2
+(`One Medical Group\n1285 4th Street, San Francisco, CA 94158`) — produced the key
+`one medical group\n1285 4th street san francisco`, newline intact. A history entry
+for the same address that omitted the venue name keyed on
+`1285 4th street san francisco`. The two can never match, so "new venue" fires
+spuriously. Fix: `re.split(r'[,\n]', loc)`.
+
+**The trap was the diagnosis, not the code.** The first symptom — `Madeline Bell,
+MD` at a clinic Jared has attended since April flagged as a new venue — invites
+the conclusion "the normalization is broken, fix it." It wasn't. The last One
+Medical appointment was 2026-07-20, **71 days before the brief**, outside the
+30-day `PREP_LOCATION_HISTORY_DAYS` window, so the flag was the *specified*
+behaviour and the brief was correct. Widening the window would have been a policy
+change dressed as a bug fix.
+
+**Rule:** before fixing a detection rule, confirm the flagged item is actually a
+false positive by querying the underlying data for the true last occurrence. Fix
+the key normalization only for the class of defect that IS real (a key that cannot
+match its own twin), and record separately that the specific instance is expected.
+Verify by asserting the day's output is **byte-identical before and after** — a
+"fix" that changes today's correct answer is a policy change wearing a bug-fix
+commit message. The docstring now says so explicitly, so the next run does not
+re-derive this from scratch.
+
+**Structural note:** this is the third prep-signal defect (the 2026-09-28 location
+rule, the naive-datetime history wipe, and now the newline key), all in one
+function's neighborhood, all passing the regression suite. The suite asserts the
+template *runs*; it does not assert a flagged venue is *correct*. A unit test over
+`_norm_loc` with the real multi-line/omitted-name venue pair would have caught the
+newline class the day it was written.
+
 ## Evening-brief run-completion persistence (2026-07-23 recipe)
 
 The briefing templates are pure generators. The calling cron run must persist:
