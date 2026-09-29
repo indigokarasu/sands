@@ -39,6 +39,7 @@ Exit codes:
 """
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -53,6 +54,18 @@ if _DRY_RUN:
     sys.argv = [sys.argv[0]] + [a for a in sys.argv[1:] if a != "--dry-run"]
 
 sys.path.insert(0, os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes")) + "/scripts")
+
+# Interpreter-agnostic dependency shim (2026-09-29) — see the same block in
+# templates/sands_briefing_evening.py. Cron's default `python3` has no
+# google-api-python-client; it lives in the system interpreter's
+# dist-packages. Append the real dirs instead of hardcoding a python path.
+import glob as _glob
+for _cand in _glob.glob("/usr/local/lib/python3.*/dist-packages") + _glob.glob(
+    "/usr/lib/python3*/dist-packages"
+):
+    if _cand not in sys.path:
+        sys.path.append(_cand)
+
 from google_auth_mcp import get_service
 
 # =============================================================================
@@ -346,10 +359,25 @@ PREP_LOCATION_HISTORY_DAYS = 30
 def _norm_loc(loc):
     """Normalize a location string to a venue key so cosmetic differences
     (missing zip, ', USA' suffix, house-number padding) don't read as a new
-    venue. Key on street + city — the first two comma-separated segments."""
+    venue. Key on street + city — the first two comma-separated segments.
+
+    Split on newlines as well as commas. Google multi-line locations carry the
+    venue name on line 1 and the street on line 2 (`One Medical Group\\n1285
+    4th Street, San Francisco, CA 94158`), so a comma-only split leaves an
+    embedded newline inside the key. History entries that omit the venue name
+    then key on `1285 4th street san francisco` while today's event keys on
+    `one medical group\\n1285 4th street san francisco` — the two can never
+    match. Collapsing the whitespace at least makes the key stable.
+
+    Note: this hardens the key; it does NOT make an out-of-window venue
+    familiar. One Medical (1285 4th St) last appeared 2026-07-20, outside the
+    30-day history window, so flagging it as a new venue is the specified
+    behaviour, not a false positive. A wider window is a policy change, not a
+    bug fix.
+    """
     if not loc:
         return ''
-    segs = [s.strip() for s in loc.split(',') if s.strip()]
+    segs = [s.strip() for s in re.split(r'[,\n]', loc) if s.strip()]
     keep = segs[:2] if len(segs) >= 2 else segs
     return ' '.join(keep).lower()
 

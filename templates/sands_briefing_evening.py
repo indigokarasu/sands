@@ -58,6 +58,20 @@ if _DRY_RUN:
     sys.argv = [sys.argv[0]] + [a for a in sys.argv[1:] if a != "--dry-run"]
 
 sys.path.insert(0, os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes")) + "/scripts")
+
+# Interpreter-agnostic dependency shim (2026-09-29): google-api-python-client and
+# google-auth are installed under the SYSTEM interpreter's dist-packages
+# (/usr/local/lib/python3.14/dist-packages), not the `python3` first on PATH.
+# Cron runs hit ModuleNotFoundError: No module named 'google' there. Rather than
+# hardcode a python path in every cron command, append the well-known
+# dist-packages dirs that actually contain googleapiclient/ before importing.
+import glob as _glob
+for _cand in _glob.glob("/usr/local/lib/python3.*/dist-packages") + _glob.glob(
+    "/usr/lib/python3*/dist-packages"
+):
+    if _cand not in sys.path:
+        sys.path.append(_cand)
+
 from google_auth_mcp import get_service
 
 # =============================================================================
