@@ -285,6 +285,7 @@ silent wrong answers most often:
 | `references/self-update-sands.md` | Before running sands.update |
 | `references/direct_calendar_access.md` | When MCP Google Workspace tools are unavailable; direct Python fallback pattern |
 | `scripts/conflict_scan_template.py` | Reusable cron-compatible conflict scan script with multi-account OAuth fallback |
+| `scripts/travel_check.py` | Reusable cron-compatible travel check. Pairs by located anchors, calls Routes v2 with the required `X-Goog-FieldMask`, resolves the canonical data dir and the Places key from secrets. `--dry-run` / `--target YYYY-MM-DD`. |
 | `references/chronicle_sync.md` | Before sands.chronicle.sync; event classification rules, value format, ingest script path, cron auth pattern, classification pitfalls |
 | `references/gotchas.md` | Common pitfalls, OAuth quirks, MCP tool limitations, cron-mode constraints, and UCSF MyChart double-import pattern |
 | `references/cron_persistence.md` | Unicode-safe JSONL persistence in cron mode (emoji in titles) + why `config.json primary_calendar_ids` drifts from the briefing template's hardcoded calendar list |

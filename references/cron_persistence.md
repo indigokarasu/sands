@@ -2,6 +2,35 @@
 
 Two reproducibility lessons from autonomous `sands.briefing.generate` cron runs.
 
+## 0. Resolve the data directory BEFORE writing (there are three)
+
+Three directories exist for Sands state. Only one is canonical:
+
+| Path | Role |
+|---|---|
+| `/root/.hermes/profiles/indigo/commons/data/ocas-sands/` | **CANONICAL** — written by the current profile's cron jobs. Check `wc -l evidence.jsonl` and the newest mtime to confirm. |
+| `/root/indigo-repo/commons/data/ocas-sands/` | Stale copy. Git-tracked, which makes it *look* authoritative. Not where the running jobs write. |
+| `/root/indigo/commons/data/ocas-sands/` | Oldest stale copy, not even a git repo. |
+
+**How to tell them apart:** count evidence records and compare newest mtime.
+The canonical one has the most records and the most recent write. Do not infer
+from git tracking — `/root/indigo-repo` is a git repo but is *not* the live
+data dir, which is exactly what makes it a trap.
+
+To confirm before any write:
+
+```bash
+for d in /root/.hermes/profiles/indigo/commons/data/ocas-sands \
+         /root/indigo-repo/commons/data/ocas-sands \
+         /root/indigo/commons/data/ocas-sands; do
+  echo "$d: $(wc -l < "$d/evidence.jsonl" 2>/dev/null) records, newest $(stat -c %y "$d/config.json" 2>/dev/null)"
+done
+```
+
+Also: `write_file` refuses to overwrite a scratch script it has not fully read,
+and correctly so — scratch files from earlier runs persist. Use a
+run-unique filename rather than reusing a generic one.
+
 ## 1. Unicode-safe JSONL appending (emoji in event titles)
 
 Event titles routinely contain emoji (e.g. `🏺 Intro to Handbuilding @ Clayroom SoMa`).
