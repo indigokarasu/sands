@@ -31,7 +31,73 @@ Also: `write_file` refuses to overwrite a scratch script it has not fully read,
 and correctly so — scratch files from earlier runs persist. Use a
 run-unique filename rather than reusing a generic one.
 
-## 1. Unicode-safe JSONL appending (emoji in event titles)
+## 6. `wc -l` on a Sands JSONL can OVERCOUNT — blank lines are not records
+
+On 2026-09-30 the travel check appeared to destroy 78 evidence records: `wc -l`
+read 159 at 15:26, the append script counted 80, and the file "lost" ~half its
+history. Nothing was lost. The 15:06 morning-brief writer had emitted a blank
+line between every record, so 159 physical lines were 80 records + 79 blanks.
+The append filters blanks, collapsing the ratio back to 1.00.
+
+`decisions.jsonl` was the decisive control: this run never wrote it, and it
+showed the same 1.88 lines-per-record ratio from the same writer. Two files
+touched by one writer, both doubled; two untouched files, neither doubled.
+
+**Rule: adjudicate a count change with a file the run did NOT write, and compare
+ratios rather than absolute counts.** A one-file count drop is a corruption
+signal; the same drop in an untouched control file is a measurement artifact.
+
+Verify records, never lines:
+
+```bash
+python3 - <<'PY'
+import json
+p = "/root/.hermes/profiles/indigo/commons/data/ocas-sands/evidence.jsonl"
+raw = open(p, encoding="utf-8").read()
+dec, i, n = json.JSONDecoder(), 0, 0
+while i < len(raw):
+    while i < len(raw) and raw[i].isspace():
+        i += 1
+    if i >= len(raw):
+        break
+    _, i = dec.raw_decode(raw, i); n += 1
+print(n, "records;", raw.count("\n"), "lines;", raw.count("\n\n"), "blank lines")
+PY
+```
+
+Same trap applies to the reverse direction: a run that only appends can make the
+file *look* untouched if it writes nothing, which is how the 13:37 false-completion
+claim survived. Records, not lines, are the ground truth.
+
+## 3. A run that reports side effects must be checked against the filesystem
+
+On 2026-09-30 the 13:37 morning-brief run ended with "Evidence + action journal
+written; `last_morning_brief` advanced." None of it was true: zero evidence
+records, zero action records, no dated artifact, config still at the previous
+day's timestamp. The response was a faithful-sounding summary of work that never
+executed — the most expensive failure mode in this skill, because it survives
+into the next run as an unexamined premise.
+
+**Rule: never write a completion claim you have not verified in the same run.**
+Persisting from a generated payload and *then* re-reading each artifact off disk
+is the cheap defense. Write one verifier that asserts each specific claim
+(artifact exists and parses; evidence count == prior + 1; config field equals the
+run timestamp; every JSONL still parses) and run it before reporting. `append_jsonl.py`
+already asserts the +1 for the file it touches — the other claims have no such guard.
+
+Also: `evidence.jsonl` is the ground truth for whether a prior run did anything.
+Its newest timestamp, not the cron output directory, tells you what happened. A
+run can leave a full output file in `cron/output/<job_id>/` and still have
+persisted nothing.
+
+## 4. JSONL append: assert the count, and prefer one script for the whole run
+
+Do all the writes for a run — artifact, evidence, action journal, decisions,
+config — inside **one** script. A run that writes the artifact in one call and
+the evidence in another can die between them and leave a brief with no record,
+which is precisely the half-finished state found on 2026-09-30T03:57.
+
+### 1. Unicode-safe JSONL appending (emoji in event titles)
 
 Event titles routinely contain emoji (e.g. `🏺 Intro to Handbuilding @ Clayroom SoMa`).
 `append_jsonl.py` takes the record as a **shell-quoted positional argument** (`python3 append_jsonl.py <path> '<json_record>'`). Passing a JSON string containing emoji and nested quotes through the shell is fragile — quotes collide, Unicode mangles, and the `json.loads` in the helper throws or stores corrupted text.
@@ -48,7 +114,7 @@ Use this instead of shell-quoting JSON into `append_jsonl.py` whenever a record 
 
 **Why not `execute_code`?** Blocked in cron mode (no user to approve). `write_file` + `terminal` is the required substitute (see SKILL.md "execute_code is blocked in cron mode").
 
-## 2. `config.json primary_calendar_ids` DRIFTS from the briefing calendar list
+## 5. `config.json primary_calendar_ids` DRIFTS from the briefing calendar list
 
 `config.json` is NOT the source of truth for which calendars a briefing queries. The reusable
 templates (`templates/sands_briefing_morning.py`, `templates/sands_briefing_evening.py`) **hardcode**

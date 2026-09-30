@@ -311,12 +311,44 @@ parsed_events.sort(key=lambda e: (0 if e['all_day'] else 1, e['sort_key']))
 # span_minutes() has a midnight-crossing guard that expands start == end into a
 # 24h busy span, manufacturing a false conflict against every later event.
 # See references/zero_duration_briefing.md.
+#
+# CALENDAR SCOPE: per the SKILL.md hard boundary, overlap between DIFFERENT
+# people's calendars is NOT a conflict by default — the operator shares a
+# household, so a family-calendar event at the same time as a personal one
+# means two people are each busy somewhere. Only (a) two events overlapping on
+# the SAME calendar, or (b) the operator being expected at both, is a conflict.
+# This loop used to count every overlap regardless of calendar, which reported
+# Shannon's mammogram as Jared's double-booking. Observed on 2026-09-29 and
+# again 2026-09-30 (three consecutive runs flagged it in evidence instead of
+# fixing it); a reference naming the boundary is worth zero until the code
+# implements it. Cross-calendar overlaps are still recorded, as busy context.
 # =============================================================================
 timed_events = [e for e in parsed_events if e['is_timed']]
 zero_duration_events = [e for e in timed_events if e.get('zero_duration')]
 durational_events = [e for e in timed_events if not e.get('zero_duration')]
 conflicts_detected = 0
+cross_calendar_overlaps = 0
 event_conflict_notes = {}
+event_busy_context = {}
+
+
+def _operator_expected_at(ev):
+    """True when Jared is on the hook for this event.
+
+    An event organized on the shared family calendar is normally a housemate's
+    commitment. It becomes the operator's when he is an attendee answering
+    anything but 'declined', or when he organized it. Google marks the
+    calendar owner's own copy with attendees[].self=True.
+    """
+    if ev.get('organizer') == OPERATOR_EMAIL:
+        return True
+    for a in ev.get('attendees', []) or []:
+        if a.get('self') and a.get('responseStatus') != 'declined':
+            return True
+        if a.get('email') == OPERATOR_EMAIL and a.get('responseStatus') != 'declined':
+            return True
+    return False
+
 
 for i in range(len(durational_events)):
     for j in range(i + 1, len(durational_events)):
@@ -329,12 +361,30 @@ for i in range(len(durational_events)):
         overlap_end = min(a_e, b_e)
         overlap_min = overlap_end - overlap_start
 
-        if overlap_min > 0:
+        if overlap_min <= 0:
+            continue
+
+        same_calendar = a.get('calendar') == b.get('calendar')
+        both_expected = _operator_expected_at(a) and _operator_expected_at(b)
+        note = f'Overlaps with "{b["summary"]}" ({overlap_min} min)'
+
+        if same_calendar or both_expected:
             conflicts_detected += 1
-            event_conflict_notes.setdefault(id(a), []).append(
-                f'Overlaps with "{b["summary"]}" ({overlap_min} min)')
+            event_conflict_notes.setdefault(id(a), []).append(note)
             event_conflict_notes.setdefault(id(b), []).append(
                 f'Overlaps with "{a["summary"]}" ({overlap_min} min)')
+        else:
+            cross_calendar_overlaps += 1
+            # Label each side with the OTHER event's actual calendar. Hardcoding
+            # "family"/"your" here assumes a is always the family event, which
+            # inverted the labels the moment the personal event sorted first.
+            cal_name = {'personal': 'your calendar', 'family': 'the family calendar'}
+            event_busy_context.setdefault(id(a), []).append(
+                f'Same time on {cal_name.get(b.get("calendar"), "another calendar")}: '
+                f'"{b["summary"]}" ({overlap_min} min)')
+            event_busy_context.setdefault(id(b), []).append(
+                f'Same time on {cal_name.get(a.get("calendar"), "another calendar")}: '
+                f'"{a["summary"]}" ({overlap_min} min)')
 
 # =============================================================================
 # PREPARATION SIGNALS
@@ -538,6 +588,7 @@ for ev in parsed_events:
         'all_day': ev['all_day'],
         'conflict': is_conflict,
         'conflict_note': conflict_note,
+        'busy_context': "; ".join(event_busy_context[id(ev)]) if id(ev) in event_busy_context else None,
         'zero_duration': ev.get('zero_duration', False),
         'prep_required': prep_needed,
         'prep_note': prep_reason if prep_needed else None,
@@ -602,6 +653,7 @@ payload = {
     'events': output_events,
     'work_busy_blocks': [],
     'conflicts_detected': conflicts_detected,
+    'cross_calendar_overlaps': cross_calendar_overlaps,
     'zero_duration_warnings': zero_duration_count,
     'prep_items_count': prep_count,
     'calendars_queried': CALENDAR_IDS,

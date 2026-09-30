@@ -127,8 +127,41 @@ def fetch_events(cal, cfg, tz, target):
     return events, errors
 
 
+def _future_departure(depart_iso, tz=None, lead_min=60):
+    """Clamp an RFC3339 departure timestamp forward to at least now+lead_min.
+
+    Routes v2 rejects a past departureTime under TRAFFIC_AWARE with HTTP 400
+    "Timestamp must be set to a future time." A check for TODAY necessarily
+    passes timestamps already in the past; a check for TOMORROW passes one in
+    the future and is left alone. Returns the original string unchanged when
+    it already qualifies or cannot be parsed (never invent a bad timestamp —
+    let the API reject it and surface the error).
+    """
+    try:
+        want = datetime.fromisoformat(depart_iso)
+    except (TypeError, ValueError):
+        return depart_iso
+    if want.tzinfo is None:
+        want = want.replace(tzinfo=tz or ZoneInfo("America/Los_Angeles"))
+    floor = datetime.now(want.tzinfo) + timedelta(minutes=lead_min)
+    if want >= floor:
+        return depart_iso
+    return floor.strftime("%Y-%m-%dT%H:%M:%S%z")[:-2] + ":" + floor.strftime("%z")[-2:]
+
+
 def route_minutes(key, origin, dest, mode, depart_iso):
-    """Returns (minutes, meters) or raises. Sends the required FieldMask."""
+    """Returns (minutes, meters) or raises. Sends the required FieldMask.
+
+    `departureTime` must be in the FUTURE when routingPreference is
+    TRAFFIC_AWARE: Routes v2 answers HTTP 400 "Timestamp must be set to a
+    future time." for any past timestamp. The natural argument — the
+    preceding event's end — is by definition in the past whenever the check
+    runs after that moment, so every TRAFFIC_AWARE call failed (2026-09-30
+    probe: past -> 400, no-preference -> 200, now+2h -> 200). Clamp the
+    timestamp forward to now+1h rather than dropping traffic data: a
+    no-preference call returns a duration but silently discards the
+    time-of-day traffic the operator is actually routing through.
+    """
     body = {
         "origin": {"address": origin},
         "destination": {"address": dest},
@@ -136,7 +169,7 @@ def route_minutes(key, origin, dest, mode, depart_iso):
     }
     if body["travelMode"] == "DRIVE":
         body["routingPreference"] = "TRAFFIC_AWARE"
-        body["departureTime"] = depart_iso
+        body["departureTime"] = _future_departure(depart_iso)
     import urllib.request  # noqa: PLC0415
 
     req = urllib.request.Request(ROUTES_URL, data=json.dumps(body).encode())
@@ -229,6 +262,10 @@ def main():
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
 
+    located = [e for e in events if e["location"] and not e["is_travel"]]
+    result["located_event_count"] = len(located)
+    result["unlocated_event_count"] = len([e for e in events if not e["location"]])
+
     for pair in build_pairs(events):
         a, b = pair["from"], pair["to"]
         entry = {
@@ -256,7 +293,16 @@ def main():
             entry["shortfall_min"] = round(need - pair["gap_min"], 1)
         result["pairs"].append(entry)
 
-    if not any(p.get("action") == "travel_block_would_fit" for p in result["pairs"]):
+    if not result["pairs"]:
+        # Zero pairs has two very different causes: no located events to pair
+        # at all, vs pairs that exist but none fit. Only the latter justifies
+        # "no_gap_fits_computed_travel_time" — the former means the run never
+        # attempted a route computation (2026-09-30 fix).
+        result["not_activity_reason"] = (
+            "no_located_events_to_pair" if not located else
+            "no_gap_fits_computed_travel_time"
+        )
+    elif not any(p.get("action") == "travel_block_would_fit" for p in result["pairs"]):
         result["not_activity_reason"] = "no_gap_fits_computed_travel_time"
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
