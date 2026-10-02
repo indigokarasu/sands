@@ -36,6 +36,20 @@ TRAVEL_MARKERS = (
     "travel", "\U0001f697", "\U0001f687", "\U0001f6b6", "\U0001f6b2",
     "drive", "commute", "leaving for", "depart for", "ride to",
 )
+# Virtual meeting rooms are not addresses. Routes v2 geocodes origins; a
+# "Microsoft Teams Meeting" location resolves to nothing, the response body is
+# {} and route_minutes() raised KeyError 'routes' (2026-10-01). Treat them as
+# unlocated so they never enter located-anchor pairing.
+VIRTUAL_LOCATION_MARKERS = (
+    "teams meeting", "zoom meeting", "google meet", "meet.google.com",
+    "webex", "gotomeeting", "skype", "discord", "bluejeans", "whereby",
+    "jitsi", "facetime", "phone call", "dial-in", "dial in", "hangout",
+)
+
+
+def is_virtual_location(loc):
+    low = (loc or "").strip().lower()
+    return any(mk in low for mk in VIRTUAL_LOCATION_MARKERS)
 MODE_MAP = {
     "driving": "DRIVE",
     "walking": "WALK",
@@ -121,6 +135,7 @@ def fetch_events(cal, cfg, tz, target):
                     "start": start,
                     "end": end,
                     "is_travel": any(mk in summary.lower() for mk in TRAVEL_MARKERS),
+                    "is_virtual": is_virtual_location(ev.get("location")),
                 }
             )
     events.sort(key=lambda e: e["start"])
@@ -147,6 +162,10 @@ def _future_departure(depart_iso, tz=None, lead_min=60):
     if want >= floor:
         return depart_iso
     return floor.strftime("%Y-%m-%dT%H:%M:%S%z")[:-2] + ":" + floor.strftime("%z")[-2:]
+
+
+class RouteUnresolvable(RuntimeError):
+    """Routes v2 returned 200 with no routes: an address could not be geocoded."""
 
 
 def route_minutes(key, origin, dest, mode, depart_iso):
@@ -178,6 +197,14 @@ def route_minutes(key, origin, dest, mode, depart_iso):
     req.add_header("X-Goog-FieldMask", FIELD_MASK)
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode())
+    # HTTP 200 with an empty body still means failure: Routes returns {} when an
+    # address cannot be geocoded (e.g. a virtual meeting room). Raise a named
+    # error carrying the reason so the pair surfaces as a diagnostic, never as a
+    # bare KeyError that reads like a script fault.
+    if not data.get("routes"):
+        raise RouteUnresolvable(
+            "routes_empty: no geocodable route %r -> %r" % (origin[:60], dest[:60])
+        )
     rt = data["routes"][0]
     return round(int(rt["duration"].rstrip("s")) / 60.0, 1), rt.get("distanceMeters")
 
@@ -188,7 +215,8 @@ def build_pairs(events):
     Avoids the miss where an unlocated event between two located ones hides a
     cross-city leg (references/gotchas.md, 2026-09-29).
     """
-    located = [e for e in events if e["location"] and not e["is_travel"]]
+    located = [e for e in events if e["location"] and not e["is_travel"]
+               and not e.get("is_virtual")]
     pairs = []
     for i in range(len(located) - 1):
         a, b = located[i], located[i + 1]
@@ -262,9 +290,12 @@ def main():
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
 
-    located = [e for e in events if e["location"] and not e["is_travel"]]
+    located = [e for e in events if e["location"] and not e["is_travel"]
+               and not e.get("is_virtual")]
     result["located_event_count"] = len(located)
     result["unlocated_event_count"] = len([e for e in events if not e["location"]])
+    result["virtual_location_events"] = [e["summary"] for e in events
+                                          if e.get("is_virtual")]
 
     for pair in build_pairs(events):
         a, b = pair["from"], pair["to"]
@@ -277,6 +308,8 @@ def main():
             mins, meters = route_minutes(key, a["location"], b["location"], mode, a["end"].isoformat())
         except Exception as exc:  # noqa: BLE001
             entry["error"] = "%s %s" % (type(exc).__name__, str(exc)[:160])
+            if isinstance(exc, RouteUnresolvable):
+                result["degraded"] = "routes_unresolvable_location"
             result["pairs"].append(entry)
             continue
         need = round(mins + buffer_min, 1)
@@ -294,16 +327,22 @@ def main():
         result["pairs"].append(entry)
 
     if not result["pairs"]:
-        # Zero pairs has two very different causes: no located events to pair
-        # at all, vs pairs that exist but none fit. Only the latter justifies
-        # "no_gap_fits_computed_travel_time" — the former means the run never
-        # attempted a route computation (2026-09-30 fix).
+        # Zero pairs has three very different causes: nothing routable to pair,
+        # a single routable anchor (no leg exists), or pairs that exist but none
+        # fit. Only the last two justify a travel-time reason (2026-09-30,
+        # 2026-10-01).
         result["not_activity_reason"] = (
-            "no_located_events_to_pair" if not located else
+            "no_located_events_to_pair" if len(located) < 2 else
             "no_gap_fits_computed_travel_time"
         )
+        if result.get("degraded") == "routes_unresolvable_location":
+            result["not_activity_reason"] = "routes_unresolvable_location"
     elif not any(p.get("action") == "travel_block_would_fit" for p in result["pairs"]):
-        result["not_activity_reason"] = "no_gap_fits_computed_travel_time"
+        if any(p.get("action") == "surface_conflict_no_block_created"
+               for p in result["pairs"]):
+            result["not_activity_reason"] = "gap_too_short_for_computed_travel_time"
+        else:
+            result["not_activity_reason"] = "no_gap_fits_computed_travel_time"
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

@@ -136,7 +136,27 @@ incomplete answer and will silently miss Family-calendar events. The template is
 calendar set; config is a secondary/legacy record.
 
 **Actions:**
-- When you need the real calendar set for a run, trust the template's `CALENDAR_IDS`, not `config.json primary_calendar_ids`.
-- Keep them in sync: if you add/remove a calendar, update BOTH the template `CALENDAR_IDS` AND `config.json primary_calendar_ids`. Note this in the edit.
+- **Calendar scope is now DISCOVERED, not hardcoded.** As of 2026-10-01 both templates call `calendarList()` and query every readable calendar except the US Holidays calendar (all-day only) and any `OCAS_WORK_CALENDAR_ID` (read/overlay only per the SKILL.md hard boundary). `OCAS_CALENDAR_IDS` pins scope explicitly and skips discovery; `OCAS_CALENDAR_EXCLUDE` drops ids from the discovered set. Do NOT re-add a hardcoded calendar list to "fix" an empty calendar — the list is what silently dropped 2 of 3 timed events on 2026-10-01.
+- Keep `config.json primary_calendar_ids` in sync with reality, but understand it is a *record of what is expected*, not the query set. A calendar discovered at runtime that is absent from config is normal and no longer a coverage bug.
 - The canonical Family calendar ID is `<family-calendar-id>@group.calendar.google.com` (see `references/known-calendar-ids.md`).
 - Per `direct_calendar_access.md`, the `<agent-email>` account can read BOTH the <operator> and Family calendars (sharing grant), so it serves as full fallback when the <operator> token is dead.
+
+## 7. Verify records with a decoder — `"timestamp"` substring counting over-counts
+
+On 2026-10-01 the morning-brief verifier reported `evidence count == prior + 1`
+FAILED while the append it had just run correctly reported 82 -> 83 records.
+The check was the defect: it counted occurrences of the substring
+`"timestamp"`, and evidence records carry a **nested `supersedes.timestamp`**,
+so any record with a supersedes entry matches twice (85 vs the true 83).
+
+A false FAIL here is dangerous in the other direction: the instinct is to
+re-append, which double-writes the record the check was supposed to protect.
+
+**Rule: count records with `json.JSONDecoder().raw_decode`, never by substring
+or by line count.** The same trap as s6 (line counting) with a new face — the
+offending substring can be nested inside one record.
+
+A verifier must also be re-runnable: this one is split into a persist phase and
+a verify-only phase precisely so the checks can be re-executed without
+re-appending. `append_jsonl.py`'s own +1 assertion covers the file it touches,
+but artifact/config/journal claims have no such guard.

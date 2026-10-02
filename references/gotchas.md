@@ -1,5 +1,36 @@
 # Sands Gotchas Reference
 
+## Verify persistence with a JSON decoder, never a substring count (2026-10-01)
+
+A morning-brief verifier reported `evidence count == prior + 1` FAILED while the
+append it had just performed correctly reported 82 -> 83 records. The check was
+the bug: it counted occurrences of the substring `"timestamp"`, and evidence
+records carry a **nested `supersedes.timestamp`**, so records with a supersedes
+entry match twice (85 vs the true 83).
+
+A false FAIL is dangerous in the direction it invites: the reflex is to re-append,
+which double-writes the very record the check was meant to protect. Count records
+with `json.JSONDecoder().raw_decode`. Same family as the blank-line trap in
+`cron_persistence.md` §6, with a new face — the offending substring can be nested
+*inside* one record.
+
+## An exported env var silently disables calendar discovery (2026-10-01)
+
+Verification of a discovery change kept reporting the old scope even after the
+template was patched correctly: an earlier `export OCAS_CALENDAR_IDS=...` in the
+same persistent shell was inherited by the next run, which pins scope by design.
+A control that disagrees with the code is not yet evidence about the code.
+
+Rule: when a control run must use *different* env than the previous one, clear it
+with `env -u VAR ...` rather than relying on `unset` in a chained command — a
+chained `unset` also tripped the nested-executable security scan in cron mode,
+which cannot prompt for approval.
+
+## Calendar Coverage
+
+- **Never hardcode the calendar list in a briefing template** — As of 2026-10-01 both templates call `calendarList()` and query every readable calendar. A fixed `[operator, family]` list silently dropped 2 of 3 timed events from the 2026-10-01 brief while emitting a clean-looking, complete day. `OCAS_CALENDAR_IDS` pins scope explicitly (skips discovery); `OCAS_CALENDAR_EXCLUDE` drops ids. The US Holidays calendar is excluded by default — all-day only, and the all-day boundary says it must never mark a day busy. A work calendar is excluded automatically (overlay-only).
+- **A regression check that greps the template source proves nothing** — The check written to guard calendar-conflict scoping asserted the source *contains* the comparison string, and passed on a version where `parsed_events` never set the key, so `None == None` made every cross-calendar pair a "conflict" (3 false conflicts in a live brief). Assert behaviour on real output instead: same-time events on different calendars must yield `conflicts_detected == 0` with `cross_calendar_overlaps > 0`.
+
 ## JSONL Append Safety
 
 - **⚠️ write_file OVERWRITES — JSONL append requires read-then-rewrite or the helper script** — The `write_file` tool replaces the entire file. NEVER call `write_file` on `evidence.jsonl`, `decisions.jsonl`, or `events.jsonl` with only the new record — you will destroy all prior history. Two safe approaches:
@@ -35,6 +66,9 @@
 - **Routes v2 `TRAFFIC_AWARE` rejects a PAST `departureTime` — 400, not 404** (2026-09-30) — `computeRoutes` with `routingPreference: TRAFFIC_AWARE` answers HTTP **400** `"Timestamp must be set to a future time."` for any timestamp in the past. The natural argument is the *preceding event's end*, which is by definition already past whenever the check runs after that moment — so the call failed for **today's** target and succeeded for tomorrow's, which is why no prior run caught it. The `X-Goog-FieldMask` lesson above is the same error class: **a 400 naming a parameter or constraint is a bug report about our request, not evidence the API is disabled.** Probe before declaring degradation: past→400, no-preference→200, now+2h→200. Fix is `_future_departure()` in `scripts/travel_check.py`, clamping to now+60min; a no-preference call would return a duration but silently discard time-of-day traffic.
 - **A logged exception that shows only `type(exc)` hides the API's reason** — `travel_check.py` caught `HTTPError` and stored `"%s %s" % (type(exc), str(exc))`, which renders as `HTTPError HTTP Error 400: Bad Request` and is indistinguishable from a bad key, a bad body, or a disabled API. Three different causes, one opaque string. When an API call fails, log `exc.read().decode()` (the body carries the message) or the next run will repeat the same misdiagnosis. This is why the 2026-09-30 travel fix took a direct probe rather than a log read.
 - **A duration of `0` min means the two addresses resolved to the same point — verify, don't record it as a real measurement** (2026-09-29) — Same-address pairs legitimately return `duration: "0s"` and `distanceMeters: null`. A zero is a signal that the two events share a facility, not that travel is instant. Assert the same-address conclusion from the inputs before writing it as a computed value.
+- **Located-anchor pairing structurally cannot see the FIRST leg of the day** (2026-10-01) — `build_pairs()` iterates `located[i] -> located[i+1]`, so a leg whose *origin* is the unlocated departure (home, a hotel) is never evaluated. When a day has exactly one located event the result is `located_event_count: 1, pairs: []` and `not_activity_reason: no_located_events_to_pair`, which reads as "nothing to do" while the most important leg of the day — the first drive of the morning — was never routed. 2026-10-02: three timed events, one real address (Gym, UCSF Mission Bay), and the tool reported zero legs. **Rule: `no_located_events_to_pair` is an absence of *anchors*, not an absence of *travel*.** Compute the first located event's inbound leg from a resolved departure origin separately and report it; it can only be auto-created once the origin is verified (hard boundary: never hardcode home). `not_activity_reason` should distinguish this case from a genuinely travel-free day.
+- **An event on a shared/family calendar does not establish the operator is the attendee** (2026-10-01) — Organizer/attendee data, not the calendar id, decides whether a travel block belongs to Jared. The 2026-10-02 Gym event (UCSF Mission Bay) sits on the family group calendar with **no attendees at all**, so a travel block for Jared could be a wrong side effect for someone else's commitment. Check `organizer.email` and `attendees` per event before creating a block; when the operator's attendance is unestablished, surface the leg and let Jared choose. Same family as the cross-calendar conflict boundary: the calendar an event was found on is context, not attribution.
+- **Evidence records that dump raw script JSON break the evidence contract** (2026-10-01) — The 14:53 cron run appended the entire `travel_check.py` stdout to `evidence.jsonl`: it has no `timestamp` and no `status`, so it is invisible to any run that filters or audits by those fields. Audit count that misses. 18 of 85 records were non-conformant as of this date. **Rule: evidence records carry `timestamp` + `command` + `status` + `not_activity_reason` (required when there are no side effects) and summarise — they do not embed tool output.** A run that passes the payload through unread is not persisting evidence, it is persisting a log line. Verify by decoding each line, not by grepping for a substring.
 - **Walking events in start order hides cross-city legs** (2026-09-29) — Building "consecutive" pairs purely by sorted order reports `missing_location` and skips pairs whenever an event with no location sits between two located ones, so a real cross-city drive can go unreported. Build pairs from **located anchors** instead: take each event that ends a block, find the next event that *has* a location, and compute that leg. For 2026-09-30 this is what surfaced the Bakar (1675 Owens St) → 2333 Buchanan St drive that the naive walk missed.
 - **When Places is unavailable, still report the cross-city pair that needs a manual estimate** — A gap of several hours between a morning clinic visit and an evening class can still warrant a travel block. Per the hard boundary, surface it with both endpoints and the available slack, and state plainly that no duration was computed. Don't drop the pair silently just because the API is down.
 - **Single event = no travel blocks needed** — When only one event exists on a travel-check day, there are nothing to insert between. Still write evidence (with `not_activity_reason: no_consecutive_events`) and update `config.json last_travel_check` so gap detection stops flagging the stale timestamp. If the single event is all-day (no timed events at all), use `not_activity_reason: no_timed_events` — this distinguishes "nothing to check" from "one event, nothing between."

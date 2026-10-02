@@ -112,6 +112,55 @@ template *runs*; it does not assert a flagged venue is *correct*. A unit test ov
 `_norm_loc` with the real multi-line/omitted-name venue pair would have caught the
 newline class the day it was written.
 
+## A fourth instance, and the general shape of all four (2026-10-01)
+
+The coverage gap: the morning template hardcoded
+`CALENDAR_IDS = [operator, family]` while the token reads **six** calendars. On
+2026-10-01 that list dropped 2 of the day's 3 timed events ('SYLVIA and Judy Thank
+you card' 09:00-11:00 on TheTopaz; 'House Cleaning' 09:30-11:00 on CC) and the
+brief reported a complete-looking day. Not a math defect — a **scope** defect, and
+the same shape as the three above: an invariant stated in a reference that the
+template never implemented.
+
+**Three runs flagged this gap and none fixed it** (2026-09-30T15:30 travel check,
+2026-10-01T13:19 morning brief, and this run). That is the same pattern as the
+"enforced by check 3f" claim in my own standing notes: evidence that names a gap
+is not a fix for it.
+
+Now `calendarList()` discovery. The general lesson:
+
+**A list of calendars is a fact that expires; code that enumerates is a fact that
+does not.** Every defect in this file was a hardcoded value standing in for
+something that changes — a 30-day history window, a two-segment location key, a
+two-calendar scope. Replace the list with the query.
+
+### The trap: my own regression check passed on a broken feature
+
+Adding discovery introduced a real bug. Conflict scoping was changed to compare
+`_source_calendar`, but `parsed_events` never set that key, so both sides were
+`None`, `None == None`, and **every cross-calendar pair became a "conflict"** —
+3 false conflicts in a live brief.
+
+The regression check I wrote to guard it grepped the template *source* for the
+string `_source_calendar') == b.get('_source_calendar')` and reported PASS, because
+the string was present. The feature was broken and the test was green.
+
+**Rule: a test that asserts the source contains a string proves the string
+exists, not that the code runs.** This is the same failure as the prep-signal
+suite above, and it is the reason those defects survived three runs each. Assert
+behaviour on real output: same-time events on three different calendars must give
+`conflicts_detected == 0` and `cross_calendar_overlaps > 0`. That assertion would
+have failed on the broken version immediately.
+
+### The second trap: a fix that changes a correct answer is a policy change
+
+Renaming the calendar label `family` -> `Family` changed every event's `calendar`
+field while changing no decision the brief makes. The control that caught it is
+the one from the 2026-09-29 section above: pin the old scope, confirm the output
+is **identical before and after**, and only then trust the diff. Pinned-scope
+output here reproduces the pre-patch artifact exactly, which is what proves the
+overlap/free-hours/prep math is untouched and only the coverage grew.
+
 ## Evening-brief run-completion persistence (2026-07-23 recipe)
 
 The briefing templates are pure generators. The calling cron run must persist:

@@ -88,10 +88,76 @@ def _require_env(name):
 OPERATOR_EMAIL = _require_env("OCAS_OPERATOR_EMAIL")
 FAMILY_CALENDAR_ID = _require_env("OCAS_FAMILY_CALENDAR_ID")
 
+# Fallback scope only. The EFFECTIVE calendar set is DISCOVERED from
+# calendarList() after auth — see _discover_calendars(). See the coverage
+# rationale below before adding anything here.
 CALENDAR_IDS = [OPERATOR_EMAIL, FAMILY_CALENDAR_ID]
 WORK_CALENDAR_ID = ""  # leave empty if no work calendar
 ACCOUNTS_TO_TRY = [a for a in [OPERATOR_EMAIL, os.environ.get("OCAS_AGENT_EMAIL", "").strip()] if a]
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
+
+# ============================================================================
+# CALENDAR COVERAGE — why this is discovered rather than hardcoded
+# ============================================================================
+# The original CALENDAR_IDS was a fixed two-calendar list (operator + Family).
+# The operator token can actually read SIX calendars, and on 2026-10-01 that
+# hardcoded list dropped 2 of the day's 3 timed events: 'SYLVIA and Judy Thank
+# you card' 09:00-11:00 (TheTopaz) and 'House Cleaning' 09:30-11:00 (CC). The
+# brief reported a complete-looking day built on a partial query, and nothing in
+# the output signalled the truncation.
+#
+# The gap was FLAGGED, not fixed, by three consecutive runs (2026-09-30T15:30
+# travel check, 2026-10-01T13:19 morning brief, and again on this run). Naming a
+# known gap in evidence is not closing it — the same lesson as the
+# "enforced by check 3f" claim. Enumerating calendarList() closes it
+# structurally: a calendar added tomorrow is picked up with no template edit.
+#
+# Housekeeping:
+#   OCAS_CALENDAR_IDS      comma-separated explicit set; pins scope, skips discovery
+#   OCAS_CALENDAR_EXCLUDE  comma-separated ids to drop from discovery
+# Holidays are excluded by default: all-day only, and the SKILL.md all-day
+# boundary says they must never mark a day busy.
+_HOLIDAY_CALENDAR_IDS = {"en.usa#holiday@group.v.calendar.google.com"}
+_CALENDAR_LABELS = {}
+
+
+def _discover_calendars(service):
+    """Return (ids, ok). Falls back to the configured pair if discovery fails."""
+    explicit = os.environ.get("OCAS_CALENDAR_IDS", "").strip()
+    if explicit:
+        ids = [c.strip() for c in explicit.split(",") if c.strip()]
+        for cid in ids:
+            # No calendarList summary is available for a pinned id, so use the
+            # same human label the discovered path produces. Falling back to the
+            # raw id here changed the 'calendar' field of every event without
+            # changing any of the math, which reads as a behaviour change in
+            # artifact diffs.
+            _CALENDAR_LABELS.setdefault(
+                cid, "Family" if "family" in cid else ("Personal" if cid == OPERATOR_EMAIL else cid))
+        return ids, True
+    exclude = {e.strip() for e in os.environ.get("OCAS_CALENDAR_EXCLUDE", "").split(",") if e.strip()}
+    exclude |= _HOLIDAY_CALENDAR_IDS
+    work = os.environ.get("OCAS_WORK_CALENDAR_ID", "").strip() or WORK_CALENDAR_ID
+    if work:
+        exclude.add(work)  # SKILL.md: work calendar is read/overlay only, never a primary
+    try:
+        items = service.calendarList().list(maxResults=250).execute().get("items", [])
+    except Exception as e:
+        print(f"  calendarList discovery FAILED ({str(e)[:60]}); using configured pair only")
+        return [OPERATOR_EMAIL, FAMILY_CALENDAR_ID], False
+    ids = []
+    for c in items:
+        cid = c.get("id", "")
+        if not cid or cid in exclude:
+            continue
+        if c.get("accessRole") not in ("owner", "writer", "reader"):
+            continue
+        ids.append(cid)
+        _CALENDAR_LABELS[cid] = c.get("summary") or c.get("summaryOverride") or cid
+    if not ids:
+        print("  calendarList discovery returned nothing usable; using configured pair")
+        return [OPERATOR_EMAIL, FAMILY_CALENDAR_ID], False
+    return ids, True
 
 # =============================================================================
 # DATE SETUP — offset derived per TARGET date via zoneinfo, never hardcoded.
@@ -154,6 +220,16 @@ if working_account != ACCOUNTS_TO_TRY[0]:
     auth_fallback_used = True
 
 print(f"Using account: {working_account}" + (" (FALLBACK)" if auth_fallback_used else ""))
+
+# Replace the hardcoded pair with everything this account can actually read.
+# Must happen BEFORE the event query, and the event query must use the
+# discovered set — asserting coverage after querying would report the gap
+# without closing it.
+CALENDAR_IDS, discovery_ok = _discover_calendars(calendar)
+print(f"Calendar scope: {len(CALENDAR_IDS)} calendar(s)"
+      + ("" if discovery_ok else "  (discovery incomplete)"))
+for cid in CALENDAR_IDS:
+    print(f"  - {_CALENDAR_LABELS.get(cid, cid)}")
 
 # =============================================================================
 # HELPERS
@@ -282,7 +358,14 @@ for ev in all_events:
         end_hhmm = "All day"
         sort_key = "0000"
 
-    cal_label = 'family' if 'family' in ev.get('_source_calendar', '') else 'personal'
+    # Calendar identity must come from the REAL calendar, not from whether the
+    # id happens to contain the substring 'family'. The old test labeled the CC
+    # and TheTopaz calendars 'personal' too, so the same-calendar conflict
+    # branch compared equal labels for events on genuinely different calendars
+    # and manufactured false conflicts.
+    src = ev.get('_source_calendar', '')
+    cal_label = _CALENDAR_LABELS.get(src) or ('Family' if 'family' in src
+                                              else ('Personal' if src == OPERATOR_EMAIL else src))
 
     zero_duration = is_timed and (start_hhmm == end_hhmm)
 
@@ -300,6 +383,7 @@ for ev in all_events:
         'zero_duration': zero_duration,
         'attendees': ev.get('attendees', []),
         'organizer': ev.get('organizer', {}).get('email', ''),
+        '_source_calendar': ev.get('_source_calendar', ''),
         'start_data': start_data,
         'end_data': end_data,
     })
@@ -364,7 +448,7 @@ for i in range(len(durational_events)):
         if overlap_min <= 0:
             continue
 
-        same_calendar = a.get('calendar') == b.get('calendar')
+        same_calendar = a.get('_source_calendar') == b.get('_source_calendar')
         both_expected = _operator_expected_at(a) and _operator_expected_at(b)
         note = f'Overlaps with "{b["summary"]}" ({overlap_min} min)'
 
@@ -377,13 +461,17 @@ for i in range(len(durational_events)):
             cross_calendar_overlaps += 1
             # Label each side with the OTHER event's actual calendar. Hardcoding
             # "family"/"your" here assumes a is always the family event, which
-            # inverted the labels the moment the personal event sorted first.
-            cal_name = {'personal': 'your calendar', 'family': 'the family calendar'}
+            # inverted the labels the moment the personal event sorted first —
+            # and it silently collapsed every non-family calendar into one bucket
+            # once discovery brought CC / TheTopaz into scope.
+            def _cal_name(c):
+                return _CALENDAR_LABELS.get(c) or ('the family calendar' if 'family' in c
+                                                    else 'your calendar')
             event_busy_context.setdefault(id(a), []).append(
-                f'Same time on {cal_name.get(b.get("calendar"), "another calendar")}: '
+                f'Same time on {_cal_name(b.get("_source_calendar", ""))}: '
                 f'"{b["summary"]}" ({overlap_min} min)')
             event_busy_context.setdefault(id(b), []).append(
-                f'Same time on {cal_name.get(a.get("calendar"), "another calendar")}: '
+                f'Same time on {_cal_name(a.get("_source_calendar", ""))}: '
                 f'"{a["summary"]}" ({overlap_min} min)')
 
 # =============================================================================
@@ -657,6 +745,8 @@ payload = {
     'zero_duration_warnings': zero_duration_count,
     'prep_items_count': prep_count,
     'calendars_queried': CALENDAR_IDS,
+    'calendar_discovery_complete': discovery_ok,
+    'uncovered_calendars': [],
     'calendar_errors': calendar_errors,
     'auth_account': working_account,
     'auth_fallback_used': auth_fallback_used,

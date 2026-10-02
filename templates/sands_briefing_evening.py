@@ -77,13 +77,70 @@ from google_auth_mcp import get_service
 # =============================================================================
 # CONFIGURATION — mirror config.json primary_calendar_ids
 # =============================================================================
+def _require_env(name):
+    """Return the env value or exit with a clear error.
+
+    This template previously defaulted to 'operator@example.com' and a
+    redacted '<family-calendar-id>' placeholder. Both reach the API and 404
+    with an error that reads like a transient fault instead of a config bug.
+    The evening brief of 2026-09-30T04:19 hit exactly that path.
+    """
+    val = os.environ.get(name, "").strip()
+    if not val or "<" in val or ">" in val or "example.com" in val:
+        sys.exit(f"ABORT: {name} is unset or still a placeholder: {val!r}. "
+                 f"Set it to a real calendar id before generating a briefing.")
+    return val
+
+
+# Fallback scope only; the EFFECTIVE set is DISCOVERED from calendarList()
+# after auth. Same coverage fix as the morning template (2026-10-01): a
+# hardcoded 2-calendar list dropped 2 of 3 timed events from the brief.
 CALENDAR_IDS = [
-    os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"),
-    os.environ.get("OCAS_FAMILY_CALENDAR_ID", "<family-calendar-id>@group.calendar.google.com"),
+    _require_env("OCAS_OPERATOR_EMAIL"),
+    _require_env("OCAS_FAMILY_CALENDAR_ID"),
 ]
 WORK_CALENDAR_ID = ""
-ACCOUNTS_TO_TRY = [os.environ.get("OCAS_OPERATOR_EMAIL", "operator@example.com"), os.environ.get("OCAS_AGENT_EMAIL", "agent@example.com")]
+ACCOUNTS_TO_TRY = [a for a in [os.environ.get("OCAS_OPERATOR_EMAIL", "").strip(),
+                               os.environ.get("OCAS_AGENT_EMAIL", "").strip()] if a]
 WORKING_HOURS = {"start": "09:00", "end": "18:00"}
+
+_HOLIDAY_CALENDAR_IDS = {"en.usa#holiday@group.v.calendar.google.com"}
+_CALENDAR_LABELS = {}
+
+
+def _discover_calendars(service):
+    """Return (ids, ok). Falls back to the configured pair if discovery fails."""
+    explicit = os.environ.get("OCAS_CALENDAR_IDS", "").strip()
+    if explicit:
+        ids = [c.strip() for c in explicit.split(",") if c.strip()]
+        for cid in ids:
+            _CALENDAR_LABELS.setdefault(
+                cid, "Family" if "family" in cid
+                else ("Personal" if cid == CALENDAR_IDS[0] else cid))
+        return ids, True
+    exclude = {e.strip() for e in os.environ.get("OCAS_CALENDAR_EXCLUDE", "").split(",") if e.strip()}
+    exclude |= _HOLIDAY_CALENDAR_IDS
+    work = os.environ.get("OCAS_WORK_CALENDAR_ID", "").strip() or WORK_CALENDAR_ID
+    if work:
+        exclude.add(work)  # SKILL.md: work calendar is overlay-only, never a primary
+    try:
+        items = service.calendarList().list(maxResults=250).execute().get("items", [])
+    except Exception as e:
+        print(f"  calendarList discovery FAILED ({str(e)[:60]}); using configured pair only")
+        return list(CALENDAR_IDS), False
+    ids = []
+    for c in items:
+        cid = c.get("id", "")
+        if not cid or cid in exclude:
+            continue
+        if c.get("accessRole") not in ("owner", "writer", "reader"):
+            continue
+        ids.append(cid)
+        _CALENDAR_LABELS[cid] = c.get("summary") or c.get("summaryOverride") or cid
+    if not ids:
+        print("  calendarList discovery returned nothing usable; using configured pair")
+        return list(CALENDAR_IDS), False
+    return ids, True
 
 # =============================================================================
 # DATE SETUP — evening brief targets TOMORROW. Offset derived per TARGET date
@@ -147,6 +204,12 @@ if working_account != ACCOUNTS_TO_TRY[0]:
 
 print(f"Using account: {working_account}" + (" (FALLBACK)" if auth_fallback_used else ""))
 
+CALENDAR_IDS, discovery_ok = _discover_calendars(calendar)
+print(f"Calendar scope: {len(CALENDAR_IDS)} calendar(s)"
+      + ("" if discovery_ok else "  (discovery incomplete)"))
+for cid in CALENDAR_IDS:
+    print(f"  - {_CALENDAR_LABELS.get(cid, cid)}")
+
 # =============================================================================
 # HELPERS
 # =============================================================================
@@ -186,6 +249,10 @@ def fromisoformat_safe(s):
 # =============================================================================
 all_events = []
 calendar_errors = {}
+# Recorded in the payload so a truncated brief is self-evident to a consumer
+# instead of looking complete.
+coverage_note = (f"{len(CALENDAR_IDS)} calendars queried"
+                 + ("" if discovery_ok else " (discovery incomplete)"))
 
 for cal_id in CALENDAR_IDS:
     try:
@@ -246,7 +313,12 @@ for ev in all_events:
         end_hhmm = "All day"
         sort_key = "0000"
 
-    cal_label = 'family' if 'family' in ev.get('_source_calendar', '') else 'personal'
+    src = ev.get('_source_calendar', '')
+    # Label from the real calendar. A 'family' substring test collapsed every
+    # non-family calendar into 'personal', so same-calendar conflict detection
+    # compared equal labels for events on different calendars.
+    cal_label = _CALENDAR_LABELS.get(src) or (
+        'Family' if 'family' in src else ('Personal' if src == CALENDAR_IDS[0] else src))
     zero_duration = is_timed and (start_hhmm == end_hhmm)
 
     parsed_events.append({
@@ -263,6 +335,7 @@ for ev in all_events:
         'zero_duration': zero_duration,
         'attendees': ev.get('attendees', []),
         'organizer': ev.get('organizer', {}).get('email', ''),
+        '_source_calendar': ev.get('_source_calendar', ''),
         'start_data': start_data,
         'end_data': end_data,
     })
@@ -276,7 +349,32 @@ timed_events = [e for e in parsed_events if e['is_timed']]
 zero_duration_events = [e for e in parsed_events if e.get('zero_duration')]
 durational_events = [e for e in timed_events if not e.get('zero_duration')]
 conflicts_detected = 0
+cross_calendar_overlaps = 0
 event_conflict_notes = {}
+event_busy_context = {}
+
+# Same SKILL.md hard boundary the morning template adopted on 2026-09-30:
+# overlap between DIFFERENT people's calendars is not a conflict by default.
+# The operator shares a household; a family-calendar event at the same time as
+# a personal one means two people are each busy somewhere. Only count a
+# conflict for same-calendar overlap, or when the operator is expected at both.
+OPERATOR_EMAIL_EVE = os.environ.get("OCAS_OPERATOR_EMAIL", "").strip()
+
+
+def _operator_expected_at_eve(ev):
+    if ev.get('organizer') == OPERATOR_EMAIL_EVE:
+        return True
+    for at in ev.get('attendees', []) or []:
+        if at.get('self') and at.get('responseStatus') != 'declined':
+            return True
+        if at.get('email') == OPERATOR_EMAIL_EVE and at.get('responseStatus') != 'declined':
+            return True
+    return False
+
+
+def _eve_cal_name(c):
+    return _CALENDAR_LABELS.get(c) or ('the family calendar' if 'family' in c else 'your calendar')
+
 
 for i in range(len(durational_events)):
     for j in range(i + 1, len(durational_events)):
@@ -287,12 +385,24 @@ for i in range(len(durational_events)):
         overlap_start = max(a_s, b_s)
         overlap_end = min(a_e, b_e)
         overlap_min = overlap_end - overlap_start
-        if overlap_min > 0:
+        if overlap_min <= 0:
+            continue
+        same_calendar = a.get('_source_calendar') == b.get('_source_calendar')
+        both_expected = _operator_expected_at_eve(a) and _operator_expected_at_eve(b)
+        if same_calendar or both_expected:
             conflicts_detected += 1
             event_conflict_notes.setdefault(id(a), []).append(
                 f'Overlaps with "{b["summary"]}" ({overlap_min} min)')
             event_conflict_notes.setdefault(id(b), []).append(
                 f'Overlaps with "{a["summary"]}" ({overlap_min} min)')
+        else:
+            cross_calendar_overlaps += 1
+            event_busy_context.setdefault(id(a), []).append(
+                f'Same time on {_eve_cal_name(b.get("_source_calendar", ""))}: '
+                f'"{b["summary"]}" ({overlap_min} min)')
+            event_busy_context.setdefault(id(b), []).append(
+                f'Same time on {_eve_cal_name(a.get("_source_calendar", ""))}: '
+                f'"{a["summary"]}" ({overlap_min} min)')
 
 # =============================================================================
 # FREE HOURS (within working hours; skip zero-duration events)
@@ -347,6 +457,7 @@ for ev in parsed_events:
         'zero_duration': ev.get('zero_duration', False),
         'conflict': is_conflict,
         'conflict_note': conflict_note,
+        'busy_context': "; ".join(event_busy_context[id(ev)]) if id(ev) in event_busy_context else None,
         'prep_required': False,
         'prep_note': None,
         'travel_before': False,
@@ -399,6 +510,10 @@ payload = {
     'events': output_events,
     'work_busy_blocks': [],
     'conflicts_detected': conflicts_detected,
+    'cross_calendar_overlaps': cross_calendar_overlaps,
+    'calendars_queried': CALENDAR_IDS,
+    'calendar_discovery_complete': discovery_ok,
+    'coverage_note': coverage_note,
     'prep_items_count': 0
 }
 
