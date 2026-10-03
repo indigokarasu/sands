@@ -141,7 +141,43 @@ calendar set; config is a secondary/legacy record.
 - The canonical Family calendar ID is `<family-calendar-id>@group.calendar.google.com` (see `references/known-calendar-ids.md`).
 - Per `direct_calendar_access.md`, the `<agent-email>` account can read BOTH the <operator> and Family calendars (sharing grant), so it serves as full fallback when the <operator> token is dead.
 
-## 7. Verify records with a decoder — `"timestamp"` substring counting over-counts
+## 8. Use `scripts/persist_brief.py`; do not hand-roll the four writes (2026-10-03)
+
+The checklist in SKILL.md listed four writes (artifact, evidence, action journal,
+config) and every hand-rolled run got the list slightly wrong. Auditing 23 morning
+briefs on 2026-10-03: **11 had no action-journal record** while all 11 had an
+evidence record *and* a dated artifact. `briefing.generate` is an Action Journal
+command, and nothing enforced it — the record that made the run look complete was
+the one being written anyway.
+
+The 13:19 run that same day reported "evidence and action journal written." The
+evidence half was true. The action half was not. This is §3 again, one run later.
+
+**The fix is a script, not a reminder.** `scripts/persist_brief.py` performs all
+four writes in one process and then re-reads each artifact off disk, asserting the
+specific claim (13 checks). It exits non-zero if any fails, so a run that skips a
+write cannot report success. Invoke it rather than re-deriving the sequence:
+
+```bash
+python3 scripts/persist_brief.py --mode morning --payload-file /tmp/sands_morning_briefing.json
+```
+
+Two details worth keeping:
+
+- **`--supersede` is not reflexively correct.** Re-running an already-recorded day
+  aborts with exit 1 unless you pass it, which is the guard against a double-append.
+  The flag replaces the record and stamps `supersedes.timestamp` so counts stay honest.
+- **Record schemas drifted between writers.** Older morning evidence records carry
+  `brief_type: "morning"` with no `mode` and no `target_date`. A matcher keyed only
+  on `(target_date, mode)` misses them and silently appends a duplicate. The script
+  falls back to the `brief_type` alias and a timestamp-derived date.
+
+**The 13 earlier gaps were not backfilled.** A retrofitted record asserts something
+about a run that cannot be re-verified; it is testimony, not evidence. The audit
+count in `decisions.jsonl` (`action_journal_gaps_found: 13`,
+`action_journal_gaps_backfilled: 0`) records the debt without inflating it.
+
+## 9. Count records with a decoder; `--verify-only` makes verification re-runnable
 
 On 2026-10-01 the morning-brief verifier reported `evidence count == prior + 1`
 FAILED while the append it had just run correctly reported 82 -> 83 records.

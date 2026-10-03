@@ -119,6 +119,21 @@ See `references/credential-files.md` for Google Places API key and OAuth token d
 
 ## Run completion
 
+For a briefing, do NOT hand-roll these writes. Run `scripts/persist_brief.py`, which
+does all four in one process and then re-reads each off disk and asserts the claim,
+exiting non-zero if any check fails:
+
+```bash
+python3 scripts/persist_brief.py --mode morning --payload-file /tmp/sands_morning_briefing.json
+```
+
+It writes the dated artifact, `evidence.jsonl` (+1), `journals/ocas-sands/action.jsonl` (+1),
+and `config.json` `last_{mode}_brief`. Add `--supersede` to replace a record already present
+for the same (target_date, mode) — it records `supersedes.timestamp` instead of duplicating.
+**Do not add `--supersede` reflexively:** without it an already-recorded day aborts with
+exit 1, which is the intended guard against a double-append. `briefing.generate` is an
+Action Journal command; an evidence record alone does not satisfy this checklist.
+
 After every Sands command:
 
 - [ ] Persist event interactions to `events.jsonl` (event_id, calendar_id, title, start, end, action, recurrence_scope, previous_values)
@@ -301,3 +316,4 @@ silent wrong answers most often:
 | `templates/sands_briefing_evening.py` | When generating the 20:00 evening brief for tomorrow |
 | `scripts/append_jsonl.py` | Whenever appending a record to any Sands JSONL — never use `write_file` on one |
 | `scripts/briefing_morning_regression.py` | After editing `templates/sands_briefing_morning.py`, or when a brief looks wrong — verifies `--help` stays side-effect free and that placeholder/unset calendar ids abort instead of 404ing |
+| `scripts/persist_brief.py` | Whenever persisting a briefing run's completion — artifact + evidence + action + config in one verified step. Use `--verify-only` to re-check without appending. |
