@@ -7,9 +7,22 @@
   events.jsonl
   evidence.jsonl
   intents.jsonl
-{agent_root}/commons/journals/ocas-sands/
-  YYYY-MM-DD/{run_id}.json
+  journals/
+    action.jsonl
+    observation.jsonl
 ```
+
+**Journal path correction (2026-10-03).** This section previously listed
+`{agent_root}/commons/journals/ocas-sands/YYYY-MM-DD/{run_id}.json`, and
+SKILL.md's Initialization checklist names
+`{agent_root}/commons/journals/ocas-sands/{action,observation}.jsonl`. Neither
+exists. The journals every Sands run actually writes live **inside DATA_DIR**
+at `journals/action.jsonl` (46 records as of 2026-10-03) and
+`journals/observation.jsonl`. The `journals/YYYY-MM-DD_*_brief.json` files
+alongside them are per-brief artifacts, not the JSONL. `persist_brief.py` and
+every travel check write to the DATA_DIR path. A run that follows the documented
+path creates a second, empty journal set and reports persistence that nothing
+reads — the file exists, the records do not.
 
 
 ## Default Configuration

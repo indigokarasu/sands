@@ -196,3 +196,48 @@ A verifier must also be re-runnable: this one is split into a persist phase and
 a verify-only phase precisely so the checks can be re-executed without
 re-appending. `append_jsonl.py`'s own +1 assertion covers the file it touches,
 but artifact/config/journal claims have no such guard.
+
+## 10. `travel_check.py` persists NOTHING — it only prints (added 2026-10-03)
+
+`scripts/travel_check.py` ends with `print(json.dumps(result))` and returns 0.
+It writes no evidence record, no journal entry, and does not advance
+`config.last_travel_check`. `persist_brief.py` (§8) covers `briefing.generate`
+only. So **every travel check depends on the calling agent hand-rolling its own
+persistence**, and a run that crashes, is truncated, or simply omits it exits
+looking clean.
+
+This is not hypothetical. On 2026-10-03 the registry showed
+`sands:travel-check` (`d0036415aa72`) with `last_run_at: 2026-10-02T15:12:43`
+and `last_status: "ok"`, while `config.last_travel_check` and the newest travel
+evidence record both still read `2026-10-01T15:14`. Zero records existed for
+the 10-02 run: **the job reported success and persisted nothing** — a 47h gap
+that `last_status: ok` concealed and that gap detection could not see, because
+gap detection reads the timestamps the run never wrote.
+
+Two rules follow:
+
+- **The registry's `last_status` is not evidence a run persisted anything.**
+  Compare `last_run_at` against the newest record for that command in
+  `evidence.jsonl` before trusting it. A registry timestamp newer than the
+  newest evidence record for that command is the false-completion signature.
+- **A `print`-only script under cron is a persistence gap waiting to recur.**
+  When a run finds one, build the persisting surface rather than noting it in
+  the report. The 2026-10-03 run hand-rolled `persist_travel_run.py` in-process
+  (all writes in one process, then re-read off disk, exit non-zero on failure)
+  — a working pattern, but per-run. The durable fix is a `persist_travel.py`
+  alongside `persist_brief.py`; until that exists, every travel check must roll
+  its own and verify before reporting.
+
+### Verifying an empty result needs a positive control
+
+`travel_check.py` skips all-day events by design (SKILL.md all-day boundary),
+so "nothing scheduled" and "the query is broken" both yield
+`not_activity_reason: no_timed_events` and zero pairs. A broken query reads
+exactly like a clear calendar.
+
+Do not report an empty day on that path alone. List all events *including*
+all-day across every configured calendar, then run the **same code path** on a
+date known to have events and confirm it returns them. On 2026-10-03 the
+2026-10-04 window returned 0 events across all 5 calendars; the same probe on
+2026-10-03 returned 2 (`Yuvafem` all-day, `Meet Cherie` timed with an
+address), matching the daily-context snapshot — so the empty result was real.
