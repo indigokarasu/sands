@@ -102,12 +102,46 @@ r6 = subprocess.run([sys.executable, TPL, "--dry-run"], capture_output=True, tex
 with open("/tmp/sands_morning_briefing.json") as f:
     pay = json.load(f)
 conflict_calendars = {e["calendar"] for e in pay["events"] if e.get("conflict")}
+# The invariant is "a cross-calendar overlap is never a conflict", NOT
+# "cross_calendar_overlaps > 0". Asserting the count is positive made the
+# check unsatisfiable on any day with no same-time events: today (2026-10-04)
+# has 0 events, so the overlap count is 0 and the check FAILED while the
+# feature under test was fine. Verified 2026-10-04 by pinning the template to
+# 2026-10-01 (3 same-time events on TheTopaz/Family/CC): conflicts=0,
+# cross_calendar_overlaps=3.
+#
+# A vacuous day must PASS vacuously — the assertion is about what never
+# happens (a cross-calendar overlap being flagged), not about what must.
+# Derive the day from the payload so this is data-driven, not clock-driven.
+_same_time_cross_calendar = 0
+for i, a in enumerate(pay["events"]):
+    for b in pay["events"][i + 1:]:
+        if a.get("calendar") == b.get("calendar"):
+            continue
+        if a.get("all_day") or b.get("all_day"):
+            continue
+        if a.get("start") == b.get("start") and a.get("start") not in (None, "", "All day"):
+            _same_time_cross_calendar += 1
 check("same-time events on different calendars are not counted as conflicts",
-      pay["conflicts_detected"] == 0 and pay["cross_calendar_overlaps"] > 0
-      and len(conflict_calendars) <= 1,
+      pay["conflicts_detected"] == 0 and len(conflict_calendars) <= 1,
       f"conflicts={pay['conflicts_detected']} "
       f"cross={pay['cross_calendar_overlaps']} "
+      f"same_time_cross_calendar_pairs={_same_time_cross_calendar} "
       f"conflict_calendars={sorted(conflict_calendars) or '[]'}")
+
+# 6b. NON-VACUOUS coverage: the overlap counter must actually count when the
+#     day HAS same-time cross-calendar events. Without this, check 6 above
+#     passes on every empty day and the feature it guards is never exercised.
+#     Skipped (not failed) when today has no such pairs — this run cannot
+#     manufacture them without mutating calendar state.
+if _same_time_cross_calendar:
+    check("cross_calendar_overlaps counts real same-time cross-calendar pairs",
+          pay["cross_calendar_overlaps"] > 0,
+          f"pairs={_same_time_cross_calendar} cross={pay['cross_calendar_overlaps']}")
+else:
+    print(f"SKIP  cross_calendar_overlaps counting — "
+          f"today has no same-time cross-calendar pairs (cross="
+          f"{pay['cross_calendar_overlaps']}); check 6 is vacuous today")
 
 if failures:
     print(f"\n{len(failures)} check(s) failed: {', '.join(failures)}")

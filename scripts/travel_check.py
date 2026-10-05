@@ -45,6 +45,17 @@ VIRTUAL_LOCATION_MARKERS = (
     "webex", "gotomeeting", "skype", "discord", "bluejeans", "whereby",
     "jitsi", "facetime", "phone call", "dial-in", "dial in", "hangout",
 )
+# Sentinel values clients write into the location field to mean "no location".
+# Treated as UNLOCATED: a placeholder is not an address. Left in, "null" is
+# sent to Routes v2 as an origin, fails geocoding, and the pair surfaces as a
+# diagnostic instead of being skipped (2026-10-04: "Interview with Axios").
+NULL_LOCATION_VALUES = {
+    "", "null", "none", "nil", "n/a", "na", "-", "--", "?", "tbd", "unknown",
+}
+
+
+def is_null_location(loc):
+    return (loc or "").strip().lower() in NULL_LOCATION_VALUES
 
 
 def is_virtual_location(loc):
@@ -136,6 +147,7 @@ def fetch_events(cal, cfg, tz, target):
                     "end": end,
                     "is_travel": any(mk in summary.lower() for mk in TRAVEL_MARKERS),
                     "is_virtual": is_virtual_location(ev.get("location")),
+                    "is_unlocated": is_null_location(ev.get("location")),
                 }
             )
     events.sort(key=lambda e: e["start"])
@@ -209,20 +221,113 @@ def route_minutes(key, origin, dest, mode, depart_iso):
     return round(int(rt["duration"].rstrip("s")) / 60.0, 1), rt.get("distanceMeters")
 
 
+def is_anchor(e):
+    """An anchor is a timed event with a real, routable address."""
+    return (e.get("location") and not e["is_travel"] and not e.get("is_virtual")
+            and not e.get("is_unlocated"))
+
+
 def build_pairs(events):
     """Located-anchor pairing: each located event's end -> next located event.
 
     Avoids the miss where an unlocated event between two located ones hides a
     cross-city leg (references/gotchas.md, 2026-09-29).
     """
-    located = [e for e in events if e["location"] and not e["is_travel"]
-               and not e.get("is_virtual")]
+    located = [e for e in events if is_anchor(e)]
     pairs = []
     for i in range(len(located) - 1):
         a, b = located[i], located[i + 1]
         gap = (b["start"] - a["end"]).total_seconds() / 60.0
         pairs.append({"from": a, "to": b, "gap_min": round(gap, 1)})
     return pairs
+
+
+def resolve_departure_origin(earlier_events, tz):
+    """Return (origin_address, source, reason) for a leg that has no anchor origin.
+
+    travel_time_logic.md Step 1: prior located event -> location context
+    (Weave -> Chronicle) -> lodging if travelling -> home if known. Every step
+    after the first requires an explicit, verified statement of where the
+    operator is. Nothing here invents an address: a hardcoded home or an assumed
+    city silently produces a wrong travel block, which is worse than none.
+
+    `SANDS_DEPARTURE_ORIGIN` is the one machine-supplied origin: an operator or
+    cron wrapper that has already established the departure point states it
+    explicitly. Absent that, the leg is surfaced as unresolved.
+
+    Note: an earlier event carrying a real address would itself be an anchor, so
+    by the time this runs the prior-event branch is structurally unreachable.
+    Kept explicit rather than assumed away so the ordering stays checkable.
+    """
+    anchored = [e for e in earlier_events if is_anchor(e)]
+    if anchored:
+        last = anchored[-1]
+        return last["location"], "prior_anchor_event", None
+
+    declared = os.environ.get("SANDS_DEPARTURE_ORIGIN", "").strip()
+    if declared and not is_null_location(declared):
+        return declared, "declared_departure_origin", None
+
+    return None, None, "origin_unestablished_no_anchor_and_no_declared_origin"
+
+
+def first_leg(events, tz):
+    """The day's INBOUND leg: the first located anchor, which has no anchor origin.
+
+    build_pairs() only walks located[i] -> located[i + 1], so the first located
+    event's inbound leg is structurally unreachable: its origin is by definition
+    not another located anchor. That leg is frequently the longest drive of the
+    day (home -> a clinic across town). Reporting zero pairs in that case reads as
+    "nothing to do" while the most important leg was never examined.
+
+    Surfaced always, with `status: origin_unresolved` when no verified origin
+    exists, so the absence of an anchor is never presented as the absence of
+    travel (references/gotchas.md, 2026-10-01).
+    """
+    located = [e for e in events if is_anchor(e)]
+    if not located:
+        return None
+    first = located[0]
+    earlier = [e for e in events if e["start"] < first["start"]]
+    origin, source, reason = resolve_departure_origin(earlier, tz)
+    leg = {
+        "kind": "first_leg",
+        "to": first["summary"],
+        "destination": first["location"],
+        "destination_start": first["start"].isoformat(),
+        "preceding_events": [
+            {"summary": e["summary"], "start": e["start"].isoformat(),
+             "location_present": bool(e["location"])}
+            for e in earlier
+        ],
+        "origin": origin,
+        "origin_source": source,
+        "action": "not_evaluated_origin_unresolved",
+    }
+    if origin is None:
+        leg["reason"] = reason
+        return leg
+
+    try:
+        mins, meters = route_minutes(
+            places_key(), origin, first["location"],
+            load_config().get("default_travel_mode", "driving"),
+            first["start"].isoformat(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        leg["action"] = "route_failed"
+        leg["error"] = "%s %s" % (type(exc).__name__, str(exc)[:160])
+        return leg
+
+    buffer_min = load_config().get("travel_buffer_minutes", 10)
+    leg["computed_minutes"] = mins
+    leg["computed_meters"] = meters
+    leg["travel_plus_buffer_min"] = round(mins + buffer_min, 1)
+    leg["action"] = (
+        "no_travel_needed_same_area" if mins == 0
+        else "first_leg_would_fit_before_event"
+    )
+    return leg
 
 
 def main():
@@ -290,12 +395,16 @@ def main():
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
 
-    located = [e for e in events if e["location"] and not e["is_travel"]
-               and not e.get("is_virtual")]
+    located = [e for e in events if is_anchor(e)]
     result["located_event_count"] = len(located)
-    result["unlocated_event_count"] = len([e for e in events if not e["location"]])
+    result["unlocated_event_count"] = len([e for e in events if is_null_location(e["location"])])
     result["virtual_location_events"] = [e["summary"] for e in events
                                           if e.get("is_virtual")]
+
+    # The inbound leg of the day has no anchor origin by construction, so
+    # build_pairs() can never reach it. Evaluate it separately and always
+    # report it, so `no_located_events_to_pair` never stands in for "no travel".
+    result["first_leg"] = first_leg(events, tz)
 
     for pair in build_pairs(events):
         a, b = pair["from"], pair["to"]
@@ -330,7 +439,10 @@ def main():
         # Zero pairs has three very different causes: nothing routable to pair,
         # a single routable anchor (no leg exists), or pairs that exist but none
         # fit. Only the last two justify a travel-time reason (2026-09-30,
-        # 2026-10-01).
+        # 2026-10-01). A day with exactly ONE located anchor is the fourth case:
+        # no anchor-to-anchor leg exists, but the day's inbound leg is still
+        # unexamined, so `no_located_events_to_pair` would misreport it as a
+        # travel-free day (2026-10-04).
         result["not_activity_reason"] = (
             "no_located_events_to_pair" if len(located) < 2 else
             "no_gap_fits_computed_travel_time"
@@ -343,6 +455,20 @@ def main():
             result["not_activity_reason"] = "gap_too_short_for_computed_travel_time"
         else:
             result["not_activity_reason"] = "no_gap_fits_computed_travel_time"
+
+    # The first leg is reported independently of pair outcomes: it is never in
+    # `pairs`, so a pair-derived reason says nothing about it.
+    leg = result.get("first_leg")
+    if leg and leg.get("action") == "not_evaluated_origin_unresolved":
+        result["first_leg_unresolved"] = True
+        result.setdefault("notes", []).append(
+            "inbound leg to %r has no verified origin (preceding events: %s); "
+            "not routed and no block created"
+            % (leg["to"], ", ".join(
+                "%s@%s location=%s" % (p["summary"], p["start"][11:16],
+                                       p["location_present"])
+                for p in leg["preceding_events"]) or "none")
+        )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

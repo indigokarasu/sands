@@ -259,6 +259,7 @@ silent wrong answers most often:
 
 - **`write_file` OVERWRITES — never use it for a JSONL append.** Use `scripts/append_jsonl.py`; for titles with emoji, see the Unicode-safe pattern in `references/cron_persistence.md`.
 - **Zero-duration and midnight-crossing events break naive overlap math.** Exclude `start == end` before calling `span_minutes`, and add 1440 when `end_min <= start_min`. See `references/zero_duration_briefing.md`.
+- - **A placeholder in the `location` field is not an address.** Clients write literal `null`, `none`, `n/a`, `tbd`, `-`. `travel_check.py` treats any member of `NULL_LOCATION_VALUES` as unlocated and excludes it from anchor pairing; if you add a new code path, route it through `is_anchor()` so the predicate stays single-sourced. Before 2026-10-04 a stored `"null"` was passed to Routes v2 as an origin: geocode failed, the run went `degraded: routes_unresolvable_location`, and — worse — the bogus anchor sat between two real ones and masked the leg it was hiding (located anchors 4, real legs 2).
 - **Every MCP Google Workspace call needs `user_google_email`.** Omitting it yields a Pydantic error that never says "missing parameter." See `references/gotchas.md` → MCP Tool Quirks.
 
 ## Error Handling
