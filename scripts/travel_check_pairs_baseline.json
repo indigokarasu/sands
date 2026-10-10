@@ -1,0 +1,108 @@
+{
+  "run_at": "2026-10-09T14:10:56.701448-07:00",
+  "target_date": "2026-10-05",
+  "buffer_minutes": 10,
+  "mode": "driving",
+  "events": [
+    {
+      "summary": "Water off",
+      "location": "",
+      "start": "2026-10-05T09:00:00-07:00",
+      "end": "2026-10-05T17:00:00-07:00"
+    },
+    {
+      "summary": "LEAVE",
+      "location": "",
+      "start": "2026-10-05T09:30:00-07:00",
+      "end": "2026-10-05T09:45:00-07:00"
+    },
+    {
+      "summary": "Interview with Axios",
+      "location": "null",
+      "start": "2026-10-05T09:45:00-07:00",
+      "end": "2026-10-05T10:30:00-07:00"
+    },
+    {
+      "summary": "Appointment with Eric Fine",
+      "location": "1651 4th St Fl 2 San Francisco CA 94158-2324",
+      "start": "2026-10-05T09:45:00-07:00",
+      "end": "2026-10-05T11:00:00-07:00"
+    },
+    {
+      "summary": "call vet about new RX",
+      "location": "",
+      "start": "2026-10-05T12:00:00-07:00",
+      "end": "2026-10-05T12:30:00-07:00"
+    },
+    {
+      "summary": "Gym",
+      "location": "Bakar Fitness & Recreation Center at UCSF Mission Bay, 1675 Owens St, San Francisco, CA 94158, USA",
+      "start": "2026-10-05T12:00:00-07:00",
+      "end": "2026-10-05T14:00:00-07:00"
+    },
+    {
+      "summary": "Bakar Walk it Out: Feet, Balance and Gait Mastery",
+      "location": "Bakar Fitness & Recreation Center at UCSF Mission Bay, 1675 Owens St, San Francisco, CA 94158, USA",
+      "start": "2026-10-05T12:00:00-07:00",
+      "end": "2026-10-05T13:00:00-07:00"
+    }
+  ],
+  "calendar_errors": {},
+  "auth_errors": [],
+  "pairs": [
+    {
+      "from": "Appointment with Eric Fine",
+      "to": "Gym",
+      "gap_min": 60.0,
+      "computed_minutes": 2.5,
+      "computed_meters": 486,
+      "travel_plus_buffer_min": 12.5,
+      "same_address": false,
+      "action": "travel_block_would_fit"
+    },
+    {
+      "from": "Gym",
+      "to": "Bakar Walk it Out: Feet, Balance and Gait Mastery",
+      "gap_min": -120.0,
+      "computed_minutes": 0.0,
+      "computed_meters": null,
+      "travel_plus_buffer_min": 10.0,
+      "same_address": true,
+      "action": "no_travel_needed_same_facility"
+    }
+  ],
+  "travel_blocks_created": 0,
+  "side_effects": [],
+  "degraded": null,
+  "not_activity_reason": null,
+  "account": "jared.zimmerman@gmail.com",
+  "located_event_count": 3,
+  "unlocated_event_count": 4,
+  "virtual_location_events": [],
+  "first_leg": {
+    "kind": "first_leg",
+    "to": "Appointment with Eric Fine",
+    "destination": "1651 4th St Fl 2 San Francisco CA 94158-2324",
+    "destination_start": "2026-10-05T09:45:00-07:00",
+    "preceding_events": [
+      {
+        "summary": "Water off",
+        "start": "2026-10-05T09:00:00-07:00",
+        "location_present": false
+      },
+      {
+        "summary": "LEAVE",
+        "start": "2026-10-05T09:30:00-07:00",
+        "location_present": false
+      }
+    ],
+    "origin": null,
+    "origin_source": null,
+    "action": "not_evaluated_origin_unresolved",
+    "reason": "stale_user_context_snapshot: snapshot 2026-10-08 is -3 day(s) old vs target 2026-10-05"
+  },
+  "first_leg_unresolved": true,
+  "notes": [
+    "inbound leg to 'Appointment with Eric Fine' has no verified origin (preceding events: Water off@09:00 location=False, LEAVE@09:30 location=False); not routed and no block created"
+  ]
+}

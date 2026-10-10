@@ -242,7 +242,74 @@ def build_pairs(events):
     return pairs
 
 
-def resolve_departure_origin(earlier_events, tz):
+def read_user_location_snapshot(target=None):
+    """Read the most recent verified location from the USER.md Daily Context.
+
+    travel_time_logic.md Step 1.5: the cron-mode substitute for asking the
+    operator where they are. The snapshot is explicit, verified, and written
+    by an earlier run that had a reason to know — it is a *declared* origin,
+    not an invented one, so the no-hardcoded-home boundary holds.
+
+    Returns (location, snapshot_date_iso, stale_reason). location is None when
+    no snapshot exists or when the only snapshot is too old to describe the
+    target day: routing a week-old location is the wrong-address failure the
+    boundary exists to prevent, and a stale snapshot is *worse* than none
+    because it reads authoritative. Nothing is cached; the file is read at run
+    time so a corrected snapshot takes effect immediately.
+    """
+    path = "/root/.hermes/profiles/indigo/memories/USER.md"
+    if not os.path.exists(path):
+        return None, None, "user_context_file_absent"
+
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        return None, None, "user_context_unreadable: %s" % type(exc).__name__
+
+    # Most recent snapshot wins: walk the ### Snapshot (YYYY-MM-DD) blocks and
+    # keep the last one that carries a Location line.
+    blocks = re.split(r"^###\s+Snapshot\s*\(", text, flags=re.M)
+    snap_date = location = None
+    for block in blocks[1:]:
+        m_date = re.match(r"([0-9]{4}-[0-9]{2}-[0-9]{2})", block)
+        m_loc = re.search(r"^\*\*Location:\*\*\s*(.+?)\s*$", block, flags=re.M)
+        if m_date and m_loc:
+            snap_date = m_date.group(1)
+            location = m_loc.group(1).strip()
+            break  # blocks appear newest-first in practice; first hit is latest
+
+    if is_null_location(location):
+        # A placeholder ("TBD", "none") is a distinct diagnosis from an absent
+        # Location line: the field was written but carries no address. Keep the
+        # reasons separate so a future run can tell "nobody wrote a location"
+        # from "the writer put a placeholder".
+        return None, snap_date, "placeholder_location_in_user_context_snapshot"
+    if not location:
+        return None, snap_date, "no_location_in_user_context_snapshot"
+    if target is None:
+        return location, snap_date, None
+
+    try:
+        if not snap_date:
+            return location, snap_date, "snapshot_date_absent"
+        sdate = datetime.fromisoformat(snap_date).date()
+        age = (target - sdate).days
+    except (TypeError, ValueError):
+        return location, snap_date, "snapshot_date_unparseable"
+
+    # Freshness gate. A snapshot up to 2 days old describes the target day; a
+    # negative age (snapshot written after the target) is fine only when it is
+    # the same day or the next. Outside that window the location is context,
+    # not an origin.
+    if age < -1 or age > 2:
+        return None, snap_date, (
+            "stale_user_context_snapshot: snapshot %s is %d day(s) old vs "
+            "target %s" % (snap_date, age, target.isoformat()))
+    return location, snap_date, None
+
+
+def resolve_departure_origin(earlier_events, tz, target=None):
     """Return (origin_address, source, reason) for a leg that has no anchor origin.
 
     travel_time_logic.md Step 1: prior located event -> location context
@@ -268,10 +335,20 @@ def resolve_departure_origin(earlier_events, tz):
     if declared and not is_null_location(declared):
         return declared, "declared_departure_origin", None
 
+    # Cron-mode substitute for asking: the verified location snapshot. Explicit
+    # env still wins (an operator who states an origin knows better than a
+    # snapshot), but before this branch every cron run ended unresolved and the
+    # day's inbound leg — usually the longest drive — was never routed.
+    snap_loc, snap_date, snap_reason = read_user_location_snapshot(target)
+    if snap_loc:
+        return snap_loc, "user_context_location_snapshot", None
+    if snap_reason:
+        return None, None, snap_reason
+
     return None, None, "origin_unestablished_no_anchor_and_no_declared_origin"
 
 
-def first_leg(events, tz):
+def first_leg(events, tz, target=None):
     """The day's INBOUND leg: the first located anchor, which has no anchor origin.
 
     build_pairs() only walks located[i] -> located[i + 1], so the first located
@@ -289,7 +366,7 @@ def first_leg(events, tz):
         return None
     first = located[0]
     earlier = [e for e in events if e["start"] < first["start"]]
-    origin, source, reason = resolve_departure_origin(earlier, tz)
+    origin, source, reason = resolve_departure_origin(earlier, tz, target)
     leg = {
         "kind": "first_leg",
         "to": first["summary"],
@@ -404,7 +481,7 @@ def main():
     # The inbound leg of the day has no anchor origin by construction, so
     # build_pairs() can never reach it. Evaluate it separately and always
     # report it, so `no_located_events_to_pair` never stands in for "no travel".
-    result["first_leg"] = first_leg(events, tz)
+    result["first_leg"] = first_leg(events, tz, target)
 
     for pair in build_pairs(events):
         a, b = pair["from"], pair["to"]

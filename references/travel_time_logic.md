@@ -17,6 +17,20 @@ Priority order:
 4. If system indicates user is at home
    → use home location
 5. If no location context available
+   → **read the location from the `## Daily Context` snapshot in `USER.md`**
+   (`/root/.hermes/profiles/indigo/memories/USER.md`, `### Snapshot (YYYY-MM-DD)`
+   → `**Location:**`) and pass it to `resolve_departure_origin()` via
+   `SANDS_DEPARTURE_ORIGIN`. Read the field at run time from the file; do not
+   copy the value into the script or config. This is the cron-mode substitute
+   for asking: 2026-10-08 and 2026-10-09 runs both ended
+   `origin_unestablished_no_anchor_and_no_declared_origin` for the day's
+   inbound leg — the longest drive of the day — while a verified location
+   snapshot was sitting one file away. A city-level snapshot (`Palo Alto, CA`)
+   is an acceptable declared origin: verified, explicit, and reads as
+   approximate rather than invented. Caveat and act: check the snapshot's
+   date. If it is stale relative to the target date, say so in the journal
+   rather than silently routing a wrong origin.
+6. If no location context available at all
    → ask the user before proceeding. Do not guess.
 
 Never assume the user is in their home city. Never use a hardcoded address.
