@@ -2,7 +2,7 @@
 name: ocas-sands
 license: MIT
 description: 'Calendar management: view, query, create, modify, delete, and analyze calendar events via natural language. Use for scheduling ("book a meeting Thursday 3pm"), conflict detection with flexibility classification, free-slot finding, automatic travel-time block insertion between consecutive appointments, recurring event management, and daily schedule briefings for Vesper. Keywords: calendar, event, schedule, meeting, appointment, availability, free slot, conflict, booking, recurring, travel time, briefing. NOT for reminders without calendar context, plain task management or to-do lists, general time/timezone questions, or when a dedicated calendar skill already owns the request.'
-source: https://github.com/<agent-handle>/sands
+source: https://github.com/indigokarasu/sands
 includes:
 - references/**
 - evals/**
