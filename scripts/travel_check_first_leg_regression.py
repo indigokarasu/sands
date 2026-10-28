@@ -23,6 +23,11 @@ import os
 import subprocess
 import sys
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip())
+    sys.exit(0)
+
 SCRIPT = "/root/.hermes/profiles/indigo/skills/ocas-sands/scripts/travel_check.py"
 # The pre-patch capture must live inside the skill, not in /tmp: /tmp is wiped,
 # and when the fixture went missing the whole suite aborted on a

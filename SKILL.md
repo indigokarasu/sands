@@ -89,7 +89,7 @@ Sands does not own: communications (Dispatch), travel reservations (Voyage), gen
 
 ## Ontology types
 
-Sands works with these types from [[`spec-ocas-ontology.md` ⚠️ Pending spec] ⚠️ Pending spec — not yet authored]:
+Sands works with these types:
 
 - **Place** — event locations resolved via Google Places API during `sands.logistics.travel`. Location data retained in `decisions.jsonl` as decision context only.
 - **Event** (Concept subclass) — calendar events managed through Google Calendar, not Chronicle.
@@ -144,33 +144,26 @@ After every Sands command:
 
 ### I/O examples
 
-Appending a run record (the only supported way to write a Sands JSONL):
+Append one run record (the only supported write path for a Sands JSONL — never `write_file` on one):
 
-```
-terminal("python3 <skill_dir>/scripts/append_jsonl.py \
-  $DATA_DIR/evidence.jsonl \
-  '{\"timestamp\":\"2026-09-27T06:00:00-07:00\",\"command\":\"sands.briefing.generate\",\
-    \"status\":\"ok\",\"not_activity_reason\":null}'")
-# → Appended. File now has 412 records.
-```
+    python3 scripts/append_jsonl.py "$DATA_DIR/evidence.jsonl" \
+      '{"timestamp":"2026-10-27T06:00:00-07:00","command":"sands.briefing.generate","status":"ok","not_activity_reason":null}'
+# → prints: Appended. File now has N records.
 
-Running the evening brief without persisting anything (safe probe):
+Run the evening brief as a safe probe (queries calendars, writes nothing):
 
-```
-terminal("python3 <skill_dir>/templates/sands_briefing_evening.py --dry-run")
-# → prints the summary + ---BRIEFING_PAYLOAD_JSON--- block
-# → "(dry-run) /tmp/sands_evening_briefing.json NOT written"
-```
+    python3 templates/sands_briefing_evening.py --dry-run
+# → prints the human summary, then ---BRIEFING_PAYLOAD_JSON--- + the Vesper payload JSON
+# → ends with "(dry-run) /tmp/sands_evening_briefing.json NOT written"
 
-Reading a window (note the offset is for the *target* date, not today):
+Query one target date's window (offset derived from the target date's zoneinfo offset, never hardcoded):
 
-```
-mcp_google_workspace_get_events(
-  user_google_email="<user-google-email>",
-  timeMin="2026-11-15T00:00:00-08:00",   # PST — November
-  timeMax="2026-11-16T00:00:00-08:00",
-  calendarId="<user-google-email>")
-```
+    mcp_google_workspace_get_events(
+      user_google_email="<operator-email>",
+      timeMin="2026-11-15T00:00:00-08:00",
+      timeMax="2026-11-16T00:00:00-08:00",
+      calendarId="<operator-email>")
+# The offset is for the target date (PST -08:00 in November), not today's offset.
 
 
 ## Hard boundaries
@@ -187,8 +180,6 @@ silent and expensive:
 - **Undo window is 24 hours; recurring event scope changes cannot be undone** — an unbounded undo on a recurring series can silently rewrite a month of history.
 
 ## Recovery Behavior
-
-This skill implements the recovery contract from `spec-ocas-recovery.md`.
 
 - **Evidence**: Every scheduled run writes an evidence record to `{agent_root}/commons/data/ocas-sands/evidence.jsonl`, including no-op runs. The `not_activity_reason` field is mandatory when no side effects occur.
 - **Gap detection**: On every wake, checks the evidence log. If gap exceeds cadence (24h for briefs, 24h for conflict-scan), logs `gap_detected`.
@@ -300,12 +291,13 @@ silent wrong answers most often:
 | `references/vesper_emit_format.md` | Before sands.briefing.generate; formatting payload for Vesper |
 | `references/self-update-sands.md` | Before running sands.update |
 | `references/direct_calendar_access.md` | When MCP Google Workspace tools are unavailable; direct Python fallback pattern |
-| `scripts/conflict_scan_template.py` | Reusable cron-compatible conflict scan script with multi-account OAuth fallback |
-| `scripts/travel_check.py` | Reusable cron-compatible travel check. Pairs by located anchors, calls Routes v2 with the required `X-Goog-FieldMask`, resolves the canonical data dir and the Places key from secrets. `--dry-run` / `--target YYYY-MM-DD`. |
+| `scripts/conflict_scan_template.py` | Before sands.schedule.conflicts — the reusable cron-compatible scan with multi-account OAuth fallback; run this instead of hand-writing a scan loop |
+| `scripts/travel_check.py` | Before sands.logistics.travel — located-anchor pairing with Routes v2 (`X-Goog-FieldMask` required), canonical data dir from env/secrets, no guessed distances |
+| `scripts/travel_check_first_leg_regression.py` | Before changing travel_check.py first-leg or pairing logic — pins pair outcomes, unresolved-inbound-leg reporting, and snapshot-staleness refusal |
+| `templates/sands_briefing_morning.py` | Before sands.briefing.generate (morning) — generator only; the caller persists via scripts/persist_brief.py |
 | `references/chronicle_sync.md` | Before sands.chronicle.sync; event classification rules, value format, ingest script path, cron auth pattern, classification pitfalls |
 | `references/gotchas.md` | Common pitfalls, OAuth quirks, MCP tool limitations, cron-mode constraints, and UCSF MyChart double-import pattern |
 | `references/cron_persistence.md` | Unicode-safe JSONL persistence in cron mode (emoji in titles) + why `config.json primary_calendar_ids` drifts from the briefing template's hardcoded calendar list |
-| `templates/sands_briefing_morning.py` | Reusable cron-compatible morning briefing script — multi-account fallback, dedup, conflict detection, prep signals |
 | `references/mcp_fallback_briefing.md` | When the morning briefing script raises a dependency or import error |
 | `references/known-calendar-ids.md` | Before using a calendar id that isn't in config.json, or when a configured id returns 404 |
 | `references/okrs.md` | When aligning a run's evidence record against the universal OKRs |
@@ -316,5 +308,5 @@ silent wrong answers most often:
 | `references/zero_duration_briefing.md` | Before persisting a morning or evening brief, or when writing overlap/zero-duration math |
 | `templates/sands_briefing_evening.py` | When generating the 20:00 evening brief for tomorrow |
 | `scripts/append_jsonl.py` | Whenever appending a record to any Sands JSONL — never use `write_file` on one |
-| `scripts/briefing_morning_regression.py` | After editing `templates/sands_briefing_morning.py`, or when a brief looks wrong — verifies `--help` stays side-effect free and that placeholder/unset calendar ids abort instead of 404ing |
+| `scripts/briefing_morning_regression.py` | Before editing `templates/sands_briefing_morning.py`, or when a brief looks wrong — verifies `--help` stays side-effect free, placeholder/unset calendar ids abort instead of 404ing, and calendar discovery widens scope |
 | `scripts/persist_brief.py` | Whenever persisting a briefing run's completion — artifact + evidence + action + config in one verified step. Use `--verify-only` to re-check without appending. |

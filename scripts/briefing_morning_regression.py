@@ -16,6 +16,11 @@ import json
 import subprocess
 import sys
 
+_HELP_ARGS = {"--help", "-h"}
+if set(sys.argv[1:]) & _HELP_ARGS:
+    print((__doc__ or "").strip())
+    sys.exit(0)
+
 TPL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    "templates", "sands_briefing_morning.py")
 
